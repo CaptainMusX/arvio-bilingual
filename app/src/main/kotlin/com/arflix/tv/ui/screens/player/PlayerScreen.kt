@@ -1085,9 +1085,16 @@ fun PlayerScreen(
 
     // Sync by hearing (audiosync.ArvioAudioSync): every extractor also copies the playing stream's
     // audio to the audio sync — idle unless it is listening. DV stripping, when on, stays underneath.
+    // ARVIO Bilingual: second-subtitle text tap. Copies the text of every embedded subtitle track
+    // (selected or not) while the extractor demuxes it anyway — the smart bilingual mode merges a
+    // second embedded language from here without a second player/decoder or any AI call.
+    val embeddedSubtitleStore = remember { com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedSubtitleStore() }
     val audioTapExtractorsFactory = remember(dvStripExtractorsFactory) {
-        com.arflix.tv.ui.screens.player.audiosync.AudioSyncTaps.wrapExtractors(
-            dvStripExtractorsFactory ?: androidx.media3.extractor.DefaultExtractorsFactory()
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.SubtitleTextTapExtractorsFactory(
+            com.arflix.tv.ui.screens.player.audiosync.AudioSyncTaps.wrapExtractors(
+                dvStripExtractorsFactory ?: androidx.media3.extractor.DefaultExtractorsFactory()
+            ) { latestUiState.selectedStreamUrl },
+            embeddedSubtitleStore,
         ) { latestUiState.selectedStreamUrl }
     }
 
@@ -3741,9 +3748,15 @@ fun PlayerScreen(
             // ARVIO Bilingual: AI-translation subtitles (English + Chinese) drawn as two
             // independently styled layers above the video. Fed by the same single text track;
             // ordinary subtitle tracks are still drawn by the PlayerView's SubtitleView above.
+            com.arflix.tv.ui.screens.player.subtitles.bilingual.SmartBilingualController(
+                viewModel = viewModel,
+                uiState = uiState,
+                store = embeddedSubtitleStore,
+                audioLanguage = { exoPlayer.audioFormat?.language },
+            )
             com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualSubtitleOverlay(
                 manager = viewModel.translationManager,
-                aiActive = uiState.isAiTranslating,
+                aiActive = uiState.isAiTranslating || uiState.smartBilingualActive,
                 hidden = false,
                 isInPictureInPicture = isInPipMode,
                 modifier = Modifier.fillMaxSize()

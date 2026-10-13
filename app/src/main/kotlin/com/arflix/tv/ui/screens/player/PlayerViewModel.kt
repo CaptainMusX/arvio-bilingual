@@ -238,6 +238,12 @@ data class PlayerUiState(
     val sourceSearchActive: Boolean = false,
     // True while AI subtitle translation is active for this playback session
     val isAiTranslating: Boolean = false,
+    /** ARVIO Bilingual: the smart bilingual mode owns the subtitle (merge or AI, see SmartBilingualController). */
+    val smartBilingualActive: Boolean = false,
+    /** Increments on every explicit user subtitle choice (pick / off): smart mode then steps aside. */
+    val subtitleUserPickNonce: Int = 0,
+    /** Increments when the user asks for the smart bilingual mode from the player menu. */
+    val smartBilingualRequestNonce: Int = 0,
     // True when AI translation is available (settings enabled + source track exists), even if not currently active
     val isAiAvailable: Boolean = false,
     // Language name being translated into (e.g. "Hebrew") when AI is available
@@ -885,6 +891,7 @@ class PlayerViewModel @Inject constructor(
             translationManager.updateService(apiKey = aiApiKey, model = aiModel)
             translationManager.removeHearingImpaired = aiRemoveHearingImpaired
             translationManager.isEnabled = false
+            leaveSmartBilingual()
             untranslatableSourceIds.clear()
             translationManager.reset()
 
@@ -3561,6 +3568,9 @@ class PlayerViewModel @Inject constructor(
         hasManualSubtitleSelection = true
         userPickedSubtitle = isUserAction
         if (isUserAction) {
+            // ARVIO Bilingual: an explicit pick always wins over the smart mode.
+            leaveSmartBilingual()
+            _uiState.value = _uiState.value.copy(subtitleUserPickNonce = _uiState.value.subtitleUserPickNonce + 1)
             // The user's own pick — the ground truth a scan verdict is judged against.
             Log.i(
                 "SubMatch",
@@ -3998,8 +4008,97 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    // ── ARVIO Bilingual: smart mode ─────────────────────────────────────────
+    /** True when a Gemini/Groq key is saved (smart mode path B needs nothing else). */
+    fun isAiTranslationConfigured(): Boolean = aiApiKey.isNotBlank()
+
+    /** Player menu: (re)start the smart bilingual mode for this video. */
+    fun requestSmartBilingual() {
+        _uiState.value = _uiState.value.copy(smartBilingualRequestNonce = _uiState.value.smartBilingualRequestNonce + 1)
+    }
+
+    /** Takes the subtitle state over for the smart mode so ARVIO's auto-selection does not fight it. */
+    private fun claimSubtitleForSmartMode() {
+        cancelFindBestMatch("smart bilingual")
+        subtitleSelectionJob?.cancel()
+        cancelSubtitleLocalization()
+        hasManualSubtitleSelection = true
+        // Not a menu pick, but it must not be displaced by a late preferred-language track.
+        userPickedSubtitle = true
+    }
+
+    /**
+     * Path A: show [primary] with the second language from another embedded track (no AI).
+     * The caller sets [SubtitleTranslationManager.secondarySource].
+     */
+    fun activateSmartBilingualMerge(primary: Subtitle) {
+        claimSubtitleForSmartMode()
+        translationManager.bilingualSource = SubtitleTranslationManager.BilingualSource.EMBEDDED_TRACK
+        translationManager.isEnabled = true
+        val changed = _uiState.value.selectedSubtitle?.id != primary.id
+        Log.i("Bilingual", "smart merge: primary=${primary.lang}/${primary.label}")
+        _uiState.value = _uiState.value.copy(
+            selectedSubtitle = primary,
+            isAiTranslating = false,
+            smartBilingualActive = true,
+            subtitleSelectionNonce = _uiState.value.subtitleSelectionNonce + if (changed) 1 else 0
+        )
+    }
+
+    /** Path B: AI-translate [primary] into [targetLanguageName] and show both. */
+    fun activateSmartBilingualAi(primary: Subtitle, targetLanguageName: String) {
+        if (aiApiKey.isBlank()) return
+        claimSubtitleForSmartMode()
+        aiSourceSubtitle = primary
+        translationManager.secondarySource = null
+        translationManager.bilingualSource = SubtitleTranslationManager.BilingualSource.AI_TRANSLATION
+        translationManager.targetLanguage = targetLanguageName
+        val wasActive = translationManager.isEnabled && _uiState.value.selectedSubtitle?.id == primary.id
+        translationManager.isEnabled = true
+        if (!wasActive) translationManager.reset()
+        aiErrorToastShown = false
+        val changed = _uiState.value.selectedSubtitle?.id != primary.id
+        Log.i("Bilingual", "smart AI: primary=${primary.lang}/${primary.label} target=$targetLanguageName")
+        _uiState.value = _uiState.value.copy(
+            selectedSubtitle = primary,
+            isAiTranslating = true,
+            isAiAvailable = true,
+            aiTargetLanguageName = targetLanguageName,
+            aiErrorToast = null,
+            smartBilingualActive = true,
+            subtitleSelectionNonce = _uiState.value.subtitleSelectionNonce + if (changed) 1 else 0
+        )
+    }
+
+    /** Smart mode, primary only (same language / nothing to pair with and no AI). */
+    fun activateSmartBilingualPrimaryOnly(primary: Subtitle) {
+        claimSubtitleForSmartMode()
+        translationManager.secondarySource = null
+        translationManager.bilingualSource = SubtitleTranslationManager.BilingualSource.EMBEDDED_TRACK
+        translationManager.isEnabled = true
+        val changed = _uiState.value.selectedSubtitle?.id != primary.id
+        _uiState.value = _uiState.value.copy(
+            selectedSubtitle = primary,
+            isAiTranslating = false,
+            smartBilingualActive = true,
+            subtitleSelectionNonce = _uiState.value.subtitleSelectionNonce + if (changed) 1 else 0
+        )
+    }
+
+    /** Hands the subtitle back to ARVIO's normal behaviour (path flags only; selection unchanged). */
+    fun leaveSmartBilingual() {
+        translationManager.secondarySource = null
+        translationManager.bilingualSource = SubtitleTranslationManager.BilingualSource.AI_TRANSLATION
+        if (_uiState.value.smartBilingualActive) {
+            if (!_uiState.value.isAiTranslating) translationManager.isEnabled = false
+            _uiState.value = _uiState.value.copy(smartBilingualActive = false)
+        }
+    }
+
     /** Existing behavior: translate the built-in/source subtitle to the target language. */
     fun activateAiTranslation() {
+        // ARVIO Bilingual: the regular AI option is a different choice than the smart mode.
+        if (_uiState.value.smartBilingualActive) leaveSmartBilingual()
         // Defense-in-depth: every caller is already gated on the AI master toggle (menu entry via
         // isAiAvailable, interim via auto-select, fallback via tryAiFallbackAfterScan), but AI
         // must never activate — and never spend API requests — when the feature is off.
@@ -7474,8 +7573,10 @@ class PlayerViewModel @Inject constructor(
         subtitleSelectionJob?.cancel()
         cancelSubtitleLocalization()
         translationManager.isEnabled = false
+        leaveSmartBilingual()
         aiSourceSubtitle = null
         _uiState.value = _uiState.value.copy(
+            subtitleUserPickNonce = _uiState.value.subtitleUserPickNonce + 1,
             selectedSubtitle = null,
             isAiTranslating = false,
             isAiAvailable = false,

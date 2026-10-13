@@ -572,7 +572,15 @@ fun escapeBuildConfigString(value: String): String =
         .replace("\"", "\\\"")
 
 val validateReleaseCloudSecrets = tasks.register("validateReleaseCloudSecrets") {
+    // ARVIO Bilingual: community builds (GitHub Actions of this fork) don't have the official
+    // Supabase/Trakt/Telegram credentials. -Parvio.allowMissingCloudSecrets=true builds anyway;
+    // those integrations are then simply unavailable in the APK (see README "Known limitations").
+    val allowMissing = (project.findProperty("arvio.allowMissingCloudSecrets") as String?) == "true"
     doLast {
+        if (allowMissing) {
+            logger.warn("validateReleaseCloudSecrets skipped (arvio.allowMissingCloudSecrets=true): cloud sync, Trakt and Telegram need official credentials and will be unavailable.")
+            return@doLast
+        }
         val appAnonKey = localSecretValue("APP_ANON_KEY").ifBlank { localSecretValue("SUPABASE_ANON_KEY") }
         val supabaseUrl = localSecretValue("SUPABASE_URL")
         val traktClientId = localSecretValue("TRAKT_CLIENT_ID")

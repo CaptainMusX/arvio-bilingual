@@ -115,13 +115,20 @@ jobs:
             echo "Test key SHA-256: $(keytool -list -keystore "$dir/test.keystore" -storepass "$pw" -alias arvio-bilingual-test | grep -o 'SHA-256.*' || true)"
           fi
 
-      - name: Unit tests (bilingual subtitles)
-        run: ./gradlew :app:testSideloadDebugUnitTest --tests 'com.arflix.tv.ui.screens.player.subtitles.bilingual.*' --no-daemon --stacktrace
+      - name: Unit tests (subtitles, incl. bilingual)
+        run: |
+          set -o pipefail
+          if ! ./gradlew :app:testSideloadDebugUnitTest --tests 'com.arflix.tv.ui.screens.player.subtitles.*' --no-daemon --stacktrace 2>&1 | tee unit-tests.log; then
+            grep -E "FAILED|Exception|Error at|expected:|^e: " unit-tests.log | grep -v "^\s*at " | head -n 40 \
+              | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+            exit 1
+          fi
+          grep -E "tests completed|BUILD SUCCESSFUL" unit-tests.log | while IFS= read -r line; do echo "::notice::${line}"; done
 
       - name: Build sideload release APK
         run: |
           set -o pipefail
-          if ! ./gradlew :app:assembleSideloadRelease --no-daemon --stacktrace 2>&1 | tee build-release.log; then
+          if ! ./gradlew :app:assembleSideloadRelease -Parvio.allowMissingCloudSecrets=true --no-daemon --stacktrace 2>&1 | tee build-release.log; then
             # Surface the real cause as annotations (readable from the run page / API).
             grep -E "^e: |error:|What went wrong|Execution failed|> .*Exception|ERROR:|Missing class|R8:" build-release.log \
               | grep -v "^\s*at " | head -n 40 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
@@ -135,13 +142,15 @@ jobs:
           VERSION=$(grep -m1 'versionName = ' app/build.gradle.kts | sed -E 's/.*"(.*)".*/\1/')
           SHORT=$(git rev-parse --short HEAD)
           mkdir -p dist
-          src=$(ls app/build/outputs/apk/sideload/release/*.apk | head -n1)
+          src=$(find app/build/outputs/apk/sideload/release -name '*.apk' | head -n1)
           name="ARVIO-Bilingual-${VERSION}-${SHORT}-${SIGNING}-signed.apk"
           cp "$src" "dist/$name"
           (cd dist && sha256sum "$name" > "$name.sha256")
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          {
+            echo "name=$name"
+            echo "version=$VERSION"
+            echo "short=$SHORT"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

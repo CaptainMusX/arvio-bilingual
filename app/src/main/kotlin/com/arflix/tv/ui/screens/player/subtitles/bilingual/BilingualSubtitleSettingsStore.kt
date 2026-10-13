@@ -81,7 +81,15 @@ class BilingualSubtitleSettingsStore(
         }
     }
 
-    fun resetToDefaults() = update { BilingualSubtitleSettings.DEFAULT.copy(mode = it.mode) }
+    /** Resets the STYLE only; mode, smart mode and the chosen languages are kept. */
+    fun resetToDefaults() = update {
+        BilingualSubtitleSettings.DEFAULT.copy(
+            mode = it.mode,
+            smartEnabled = it.smartEnabled,
+            primaryLanguage = it.primaryLanguage,
+            secondaryLanguage = it.secondaryLanguage,
+        )
+    }
 
     /** Writes immediately (used by tests and when leaving the player). */
     suspend fun flush() {

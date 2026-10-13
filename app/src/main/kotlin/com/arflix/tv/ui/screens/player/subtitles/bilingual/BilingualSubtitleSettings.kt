@@ -77,10 +77,32 @@ data class BilingualSubtitleSettings(
     val gapDp: Int = 4,
     /** Distance of the whole group from the bottom of the video area, percent of its height. */
     val bottomPercent: Int = 6,
+    /** Style of the PRIMARY language block (kept as "original" for settings compatibility). */
     val original: BilingualLineStyle = DEFAULT_ORIGINAL,
+    /** Style of the SECONDARY language block (AI translation or second embedded track). */
     val translation: BilingualLineStyle = DEFAULT_TRANSLATION,
+    /**
+     * Smart bilingual mode (opt-in): pick the subtitle source automatically — two embedded text
+     * tracks are merged without AI (path A), otherwise the primary is translated by AI (path B).
+     * Off = ARVIO's normal subtitle behaviour; the bilingual layer then only appears when the
+     * user turns on AI translation.
+     */
+    val smartEnabled: Boolean = false,
+    /** "auto" or a BCP 47 tag (e.g. "en", "ja"). */
+    val primaryLanguage: String = SubtitleLanguage.AUTO,
+    /** BCP 47 tag of the second language, default Simplified Chinese. */
+    val secondaryLanguage: String = DEFAULT_SECONDARY_LANGUAGE,
 ) {
+    /** Resolved secondary language (never null). */
+    val secondary: SubtitleLanguage
+        get() = SubtitleLanguage.parse(secondaryLanguage) ?: SubtitleLanguage.SIMPLIFIED_CHINESE
+
+    /** Explicit primary language, or null for Auto. */
+    val primaryExplicit: SubtitleLanguage? get() = SubtitleLanguage.parse(primaryLanguage)
+
     fun sanitized(): BilingualSubtitleSettings = copy(
+        primaryLanguage = SubtitleLanguage.parse(primaryLanguage)?.tag ?: SubtitleLanguage.AUTO,
+        secondaryLanguage = SubtitleLanguage.parse(secondaryLanguage)?.tag ?: DEFAULT_SECONDARY_LANGUAGE,
         gapDp = gapDp.coerceIn(0, MAX_GAP_DP),
         bottomPercent = bottomPercent.coerceIn(0, MAX_BOTTOM_PERCENT),
         original = original.sanitized(),
@@ -88,6 +110,7 @@ data class BilingualSubtitleSettings(
     )
 
     companion object {
+        const val DEFAULT_SECONDARY_LANGUAGE = "zh-Hans"
         const val MAX_GAP_DP = 48
         const val MAX_BOTTOM_PERCENT = 60
 

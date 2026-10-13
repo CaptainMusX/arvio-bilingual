@@ -63,7 +63,8 @@ fun BilingualSubtitleOverlay(
     LaunchedEffect(current?.generation, settings.mode, aiActive) {
         if (current == null || !aiActive || !manager.isEnabled) return@LaunchedEffect
         if (current.translation != null || current.translationFailed) return@LaunchedEffect
-        if (!settings.mode.needsTranslation) return@LaunchedEffect
+        // Path A (second embedded track) never translates.
+        if (!manager.translationNeeded) return@LaunchedEffect
         val (translated, ok) = try {
             manager.translateDetailed(current.sourceKey)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -72,6 +73,31 @@ fun BilingualSubtitleOverlay(
             current.sourceKey to false
         }
         manager.bilingualBus.deliverTranslation(current.generation, current.sourceKey, translated, !ok)
+    }
+
+    // Smart-mode status ("merging embedded tracks", "no AI key", "tracks don't line up"…):
+    // shown briefly at the top so a fallback is never silent.
+    val notice by manager.bilingualNotice.collectAsState()
+    LaunchedEffect(notice?.id) {
+        val shown = notice ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(if (shown.isWarning) 7_000L else 4_000L)
+        if (manager.bilingualNotice.value?.id == shown.id) manager.bilingualNotice.value = null
+    }
+    if (!hidden && !isInPictureInPicture) {
+        notice?.let { n ->
+            Box(modifier = modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout)) {
+                Text(
+                    text = n.message(),
+                    color = if (n.isWarning) Color(0xFFFFD49A) else Color(0xFFEFEFEF),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 18.dp, start = 24.dp, end = 24.dp)
+                        .background(Color(0xB3000000), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+        }
     }
 
     if (!aiActive || hidden) return

@@ -13,9 +13,22 @@ import kotlinx.coroutines.CancellationException
 
 class SubtitleTranslationManager(
     private var service: SubtitleTranslationService,
-    internal var targetLanguage: String,
+    targetLanguage: String,
     private val scope: CoroutineScope
 ) {
+    /**
+     * Language the AI translates into (a name, e.g. "Simplified Chinese"). Cached translations
+     * are keyed by it, so switching languages never shows a line translated for the old one, and
+     * the on-screen frame is invalidated so an in-flight result for the old language is dropped.
+     */
+    @Volatile
+    internal var targetLanguage: String = targetLanguage
+        set(value) {
+            if (field != value) {
+                field = value
+                bilingualBus.clear()
+            }
+        }
     companion object {
         const val MOCK_MODE = false
         // Groq free tier: 30 RPM. Subtitles change every 2-4s naturally (~15-20 RPM).
@@ -43,18 +56,51 @@ class SubtitleTranslationManager(
     var displayMode: com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode =
         com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.BILINGUAL
 
+    /**
+     * Where the second language comes from while the bilingual layer is active:
+     * AI translation of the primary (path B, ARVIO's existing Gemini/Groq flow), or a second
+     * embedded subtitle track of the same file (path A — never calls the translation API).
+     */
+    enum class BilingualSource { AI_TRANSLATION, EMBEDDED_TRACK }
+
+    @Volatile
+    var bilingualSource: BilingualSource = BilingualSource.AI_TRANSLATION
+        set(value) {
+            if (field != value) bilingualBus.clear()
+            field = value
+        }
+
+    /** Path A's secondary-line provider (null = primary only). */
+    @Volatile
+    var secondarySource: com.arflix.tv.ui.screens.player.subtitles.bilingual.DualTrackSecondarySource? = null
+        set(value) {
+            if (field !== value) bilingualBus.clear()
+            field = value
+        }
+
+    /** Short user-facing notice about the smart bilingual mode (shown briefly by the overlay). */
+    val bilingualNotice = kotlinx.coroutines.flow.MutableStateFlow<com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualNotice?>(null)
+
+    /** Called by the cue publisher after every path-A lookup (drives the low-confidence fallback). */
+    @Volatile
+    var onSecondaryLookup: ((com.arflix.tv.ui.screens.player.subtitles.bilingual.DualTrackSecondarySource.Lookup) -> Unit)? = null
+
     /** True when the current display mode needs translations at all (saves API calls otherwise). */
-    val translationNeeded: Boolean get() = isEnabled && displayMode.needsTranslation
+    val translationNeeded: Boolean
+        get() = isEnabled && displayMode.needsTranslation && bilingualSource == BilingualSource.AI_TRANSLATION
 
     /**
      * Translates [text] through the normal queue/cache and reports whether it really succeeded.
      * On failure the existing queue completes with the source text and does not cache it.
      */
     suspend fun translateDetailed(text: String): Pair<String, Boolean> {
-        val result = translate(text)
-        val ok = cache.containsKey(text)
+        val lang = targetLanguage
+        val result = translate(text, lang)
+        val ok = cache.containsKey(cacheKey(lang, text))
         return result to ok
     }
+
+    private fun cacheKey(lang: String, text: String): String = lang + '\u0001' + text
     var removeHearingImpaired: Boolean = true
     @Volatile var removeSubtitleHearingImpaired: Boolean = false
 
@@ -80,7 +126,7 @@ class SubtitleTranslationManager(
     private val pendingCount = AtomicInteger(0)
     private var hideTranslatingJob: Job? = null
 
-    private data class PendingItem(val text: String, val deferred: CompletableDeferred<String>)
+    private data class PendingItem(val text: String, val lang: String, val deferred: CompletableDeferred<String>)
     private val queue = Channel<PendingItem>(Channel.UNLIMITED)
 
     init {
@@ -113,9 +159,14 @@ class SubtitleTranslationManager(
                 batch.add(next)
             }
 
+            // One API request per target language (a language switch mid-batch is rare).
+            val lang = batch.first().lang
+            val sameLang = batch.filter { it.lang == lang }
+            batch.filter { it.lang != lang }.forEach { queue.trySend(it) }
+            batch.retainAll(sameLang)
             val texts = batch.map { it.text }
             val result = try {
-                service.translateBatch(texts, targetLanguage)
+                service.translateBatch(texts, lang)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -130,7 +181,7 @@ class SubtitleTranslationManager(
                 // On error: complete deferreds with original text so the caller doesn't hang,
                 // but do NOT cache — the next render will retry rather than permanently show English.
                 batch.forEachIndexed { i, item ->
-                    inFlight.remove(item.text)
+                    inFlight.remove(cacheKey(item.lang, item.text))
                     item.deferred.complete(item.text)
                 }
                 batch.clear()
@@ -140,31 +191,35 @@ class SubtitleTranslationManager(
             onBatchResult?.invoke(true, null)
             batch.forEachIndexed { i, item ->
                 val translated = result.lines.getOrElse(i) { item.text }
-                cache[item.text] = translated
-                inFlight.remove(item.text)
+                cache[cacheKey(item.lang, item.text)] = translated
+                inFlight.remove(cacheKey(item.lang, item.text))
                 item.deferred.complete(translated)
             }
             batch.clear()
         }
     }
 
-    fun getCached(text: String): String? = cache[text]
+    /** Cached translation of [text] into the CURRENT target language. */
+    fun getCached(text: String): String? = cache[cacheKey(targetLanguage, text)]
 
-    fun isInFlight(text: String): Boolean = inFlight.containsKey(text)
+    fun isInFlight(text: String): Boolean = inFlight.containsKey(cacheKey(targetLanguage, text))
 
-    suspend fun translate(text: String): String {
-        cache[text]?.let { return it }
+    suspend fun translate(text: String): String = translate(text, targetLanguage)
+
+    private suspend fun translate(text: String, lang: String): String {
+        val key = cacheKey(lang, text)
+        cache[key]?.let { return it }
         // If the same text is already queued (e.g. preTranslateWindow raced us), join it.
-        inFlight[text]?.let { return it.await() }
+        inFlight[key]?.let { return it.await() }
 
         val deferred = CompletableDeferred<String>()
-        inFlight[text] = deferred
+        inFlight[key] = deferred
         val depth = pendingCount.getAndIncrement()
         if (depth == 0) {
             isTranslating = true
             onTranslatingChanged?.invoke(true)
         }
-        queue.send(PendingItem(text, deferred))
+        queue.send(PendingItem(text, lang, deferred))
         return try {
             deferred.await()
         } finally {
@@ -198,14 +253,17 @@ class SubtitleTranslationManager(
         if (!isEnabled) return
         // ARVIO Bilingual: "Original only" / "Off" never need translations.
         if (!displayMode.needsTranslation) return
-        val uncached = texts.filter { !cache.containsKey(it) && !inFlight.containsKey(it) }
+        // Path A (second embedded track) never translates.
+        if (bilingualSource != BilingualSource.AI_TRANSLATION) return
+        val lang = targetLanguage
+        val uncached = texts.filter { !cache.containsKey(cacheKey(lang, it)) && !inFlight.containsKey(cacheKey(lang, it)) }
         if (uncached.isEmpty()) return
         uncached.chunked(40).forEach { chunk ->
-            val result = service.translateBatch(chunk, targetLanguage)
+            val result = service.translateBatch(chunk, lang)
             if (result.success) {
                 onBatchResult?.invoke(true, null)
                 chunk.forEachIndexed { i, text ->
-                    cache[text] = result.lines.getOrElse(i) { text }
+                    cache[cacheKey(lang, text)] = result.lines.getOrElse(i) { text }
                 }
             } else {
                 onBatchResult?.invoke(false, result.errorMessage)

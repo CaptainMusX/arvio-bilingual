@@ -67,6 +67,8 @@ fun BilingualSubtitleSettingsPanel(
     aiTranslating: Boolean = false,
     onEnableAiTranslation: (() -> Unit)? = null,
     showPreview: Boolean = true,
+    /** Inside the player: offer "use Smart Bilingual for this video" (sent via [BilingualPlayerBridge]). */
+    inPlayer: Boolean = aiAvailable != null,
 ) {
     val context = LocalContext.current
     val store = remember { BilingualSubtitleSettingsStore.from(context) }
@@ -99,14 +101,60 @@ fun BilingualSubtitleSettingsPanel(
             }
         }
 
+        val primaryName = settings.primaryExplicit?.displayName ?: "Primary"
+        val secondaryName = settings.secondary.displayName
+
         if (showPreview) Preview(settings)
+
+        // ── Smart bilingual (source selection) ──────────────────────────────
+        SectionTitle("Smart bilingual")
+        ToggleLine(
+            label = "Pick the source automatically",
+            checked = settings.smartEnabled,
+            onToggle = { on -> store.update { it.copy(smartEnabled = on) } }
+        )
+        Text(
+            "Two embedded text tracks in your languages are merged directly (no AI, no cost). " +
+                "If only the primary exists, it is translated with Gemini/Groq. A subtitle you pick yourself is always kept.",
+            color = InkDim,
+            fontSize = 11.sp
+        )
+        if (inPlayer) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Accent.copy(alpha = 0.18f))
+                    .clickable { BilingualPlayerBridge.requestSmartMode() }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Use Smart Bilingual for this video", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Text("Primary subtitle language", color = Ink, fontSize = 13.sp)
+        ChipRow(
+            options = listOf(SubtitleLanguage.AUTO to "Auto") +
+                SubtitleLanguage.PICKER_OPTIONS.map { it.tag to it.displayName },
+            selected = settings.primaryExplicit?.tag ?: SubtitleLanguage.AUTO,
+            onSelect = { tag -> store.update { it.copy(primaryLanguage = tag) } }
+        )
+        Text("Secondary subtitle language", color = Ink, fontSize = 13.sp)
+        ChipRow(
+            options = SubtitleLanguage.PICKER_OPTIONS.map { it.tag to it.displayName },
+            selected = settings.secondary.tag,
+            onSelect = { tag -> store.update { it.copy(secondaryLanguage = tag) } }
+        )
+        if (SubtitleLanguageMatcher.sameLanguage(settings.primaryExplicit, settings.secondary)) {
+            Hint("Primary and secondary are the same language — only one line would be shown. Pick a different secondary language.")
+        }
 
         SectionTitle("Display mode")
         ChipRow(
             options = listOf(
                 BilingualDisplayMode.BILINGUAL to "Bilingual",
-                BilingualDisplayMode.ORIGINAL_ONLY to "Original only",
-                BilingualDisplayMode.TRANSLATION_ONLY to "Translation only",
+                BilingualDisplayMode.ORIGINAL_ONLY to "$primaryName only",
+                BilingualDisplayMode.TRANSLATION_ONLY to "$secondaryName only",
                 BilingualDisplayMode.OFF to "Off",
             ),
             selected = settings.mode,
@@ -116,8 +164,8 @@ fun BilingualSubtitleSettingsPanel(
         SectionTitle("Basic")
         ChipRow(
             options = listOf(
-                BilingualOrder.ORIGINAL_FIRST to "English on top",
-                BilingualOrder.TRANSLATION_FIRST to "Chinese on top",
+                BilingualOrder.ORIGINAL_FIRST to "$primaryName on top",
+                BilingualOrder.TRANSLATION_FIRST to "$secondaryName on top",
             ),
             selected = settings.order,
             onSelect = { o -> store.update { it.copy(order = o) } }
@@ -137,26 +185,26 @@ fun BilingualSubtitleSettingsPanel(
             onChange = { v -> store.update { it.copy(bottomPercent = v.roundToInt()) } }
         )
         LabeledSlider(
-            label = "English size",
+            label = "$primaryName size",
             valueText = "${settings.original.sizeSp} sp",
             value = settings.original.sizeSp.toFloat(),
             range = BilingualLineStyle.MIN_SIZE_SP.toFloat()..BilingualLineStyle.MAX_SIZE_SP.toFloat(),
             onChange = { v -> store.update { it.copy(original = it.original.copy(sizeSp = v.roundToInt())) } }
         )
         LabeledSlider(
-            label = "Chinese size",
+            label = "$secondaryName size",
             valueText = "${settings.translation.sizeSp} sp",
             value = settings.translation.sizeSp.toFloat(),
             range = BilingualLineStyle.MIN_SIZE_SP.toFloat()..BilingualLineStyle.MAX_SIZE_SP.toFloat(),
             onChange = { v -> store.update { it.copy(translation = it.translation.copy(sizeSp = v.roundToInt())) } }
         )
         ColorPicker(
-            label = "English color",
+            label = "$primaryName color",
             hex = settings.original.colorHex,
             onPick = { h -> store.update { it.copy(original = it.original.copy(colorHex = h)) } }
         )
         ColorPicker(
-            label = "Chinese color",
+            label = "$secondaryName color",
             hex = settings.translation.colorHex,
             onPick = { h -> store.update { it.copy(translation = it.translation.copy(colorHex = h)) } }
         )
@@ -168,12 +216,12 @@ fun BilingualSubtitleSettingsPanel(
         )
         if (advanced) {
             LanguageSection(
-                title = "English (original)",
+                title = "$primaryName (primary)",
                 style = settings.original,
                 onChange = { s -> store.update { it.copy(original = s) } }
             )
             LanguageSection(
-                title = "Chinese (translation)",
+                title = "$secondaryName (secondary)",
                 style = settings.translation,
                 onChange = { s -> store.update { it.copy(translation = s) } }
             )
@@ -190,8 +238,8 @@ fun BilingualSubtitleSettingsPanel(
             Text("Reset bilingual style to defaults", color = InkDim, fontSize = 13.sp)
         }
         Text(
-            "Applies only while AI Translation is on. Normal subtitle tracks keep ARVIO's own subtitle style. " +
-                "Secondary Subtitle Language is a different, unrelated setting.",
+            "Applies to the bilingual layer (Smart Bilingual or AI Translation). Normal subtitle tracks keep ARVIO's own subtitle style. " +
+                "ARVIO's own \"Secondary subtitle language\" (subtitle search filter) is a different setting.",
             color = InkDim,
             fontSize = 11.sp
         )
@@ -201,12 +249,12 @@ fun BilingualSubtitleSettingsPanel(
 
 @Composable
 private fun Preview(settings: BilingualSubtitleSettings) {
-    val frame = remember {
+    val frame = remember(settings.primaryLanguage, settings.secondaryLanguage) {
         BilingualFrame(
             generation = 1,
             sourceKey = "preview",
-            original = "Winter is coming, and we are not ready.",
-            translation = "凛冬将至，而我们还没有准备好。",
+            original = previewLine(settings.primaryExplicit ?: SubtitleLanguage.ENGLISH),
+            translation = previewLine(settings.secondary),
         )
     }
     val blocks = BilingualComposer.compose(frame, settings)
@@ -413,4 +461,22 @@ private fun Hint(text: String) {
     ) {
         Text(text, color = Warn, fontSize = 12.5.sp)
     }
+}
+
+/** Sample line for the preview in [lang] (falls back to English). */
+private fun previewLine(lang: SubtitleLanguage): String = when {
+    lang.base == "zh" && lang.script == SubtitleLanguage.HANT -> "凜冬將至，而我們還沒有準備好。"
+    lang.base == "zh" -> "凛冬将至，而我们还没有准备好。"
+    lang.base == "ja" -> "冬が来る、そして私たちはまだ準備ができていない。"
+    lang.base == "ko" -> "겨울이 오고 있는데, 우리는 아직 준비가 안 됐어."
+    lang.base == "es" -> "Se acerca el invierno y no estamos preparados."
+    lang.base == "fr" -> "L'hiver arrive, et nous ne sommes pas prêts."
+    lang.base == "de" -> "Der Winter naht, und wir sind nicht bereit."
+    else -> "Winter is coming, and we are not ready."
+}
+
+/** Player-side requests from the settings panel (decoupled: the panel is also used outside the player). */
+object BilingualPlayerBridge {
+    val requests = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    fun requestSmartMode() { requests.tryEmit(Unit) }
 }

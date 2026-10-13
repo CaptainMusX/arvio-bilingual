@@ -214,6 +214,7 @@ private class TranslatingTextOutput(
 ) : TextOutput {
 
     @Volatile private var lastCueGroup: CueGroup? = null
+    private val publisher = com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualCuePublisher(manager, scope)
     var onFirstCueOnPlaybackThread: (() -> Unit)? = null
     private var hasFiredFirstCue = false
 
@@ -240,7 +241,7 @@ private class TranslatingTextOutput(
         if (cues.isEmpty()) {
             // Genuine end-of-subtitle marker — update so pending translations know display cleared.
             lastCueGroup = cueGroup
-            manager.bilingualBus.clear()
+            publisher.clear(cueGroup.presentationTimeUs)
             delegate.onCues(cueGroup)
             return
         }
@@ -255,7 +256,7 @@ private class TranslatingTextOutput(
             // language and looking like "AI returned English".
             manager.onUntranslatableSource?.invoke()
             lastCueGroup = cueGroup
-            manager.bilingualBus.clear()
+            publisher.clear(cueGroup.presentationTimeUs)
             delegate.onCues(cueGroup)
             return
         }
@@ -265,37 +266,20 @@ private class TranslatingTextOutput(
             // bilingual layer follows the source timeline strictly, so the previous dialogue
             // (and any translation still in flight for it) leaves the screen here.
             lastCueGroup = cueGroup
-            manager.bilingualBus.clear()
+            publisher.clear(cueGroup.presentationTimeUs)
             delegate.onCues(CueGroup(emptyList(), cueGroup.presentationTimeUs))
             return
         }
 
         // ── ARVIO Bilingual ──────────────────────────────────────────────────
-        // AI subtitles are drawn by the Compose BilingualSubtitleOverlay (two independently
-        // styled text layers), not by Media3's SubtitleView: hand SubtitleView an empty group
-        // and publish the source text + translation to the overlay. Both languages share this
-        // single cue event, so they appear and disappear on exactly the source timeline.
+        // Bilingual subtitles are drawn by the Compose BilingualSubtitleOverlay (two
+        // independently styled text layers), not by Media3's SubtitleView: hand SubtitleView an
+        // empty group and publish the primary text; its second language comes from the AI
+        // translation (path B) or the aligned second embedded track (path A). Both languages
+        // share this single cue event, so they follow exactly the primary's timeline.
         lastCueGroup = cueGroup
         delegate.onCues(CueGroup(emptyList(), cueGroup.presentationTimeUs))
-        val cached = manager.getCached(text)
-        val token = manager.bilingualBus.showCue(sourceKey = text, original = text, cachedTranslation = cached)
-        if (cached != null || !manager.translationNeeded) return
-
-        // Not cached yet: the source line is already on screen; the translation is attached
-        // when it arrives — only if this exact cue is still showing (generation token), so a
-        // late result after a seek / new cue / track, source or episode switch is dropped.
-        // translate() joins an in-flight request for the same text (pre-translation window),
-        // so this never sends a duplicate API request.
-        scope.launch {
-            val (translated, ok) = try {
-                manager.translateDetailed(text)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                text to false
-            }
-            manager.bilingualBus.deliverTranslation(token, text, translated, failed = !ok)
-        }
+        publisher.publish(text, cueGroup.presentationTimeUs)
     }
 
     @Deprecated("Uses the deprecated Media3 callback.")

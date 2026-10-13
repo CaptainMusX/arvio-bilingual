@@ -746,7 +746,7 @@ fun MobileSubtitlesSheet(
         currentView == "fonts" -> "Subtitle Font"
         currentView == "tracks" -> "${selectedLanguageName ?: "Track"} Subtitles"
         currentView == "substyle" -> "Subtitle Settings"
-        currentView == "bilingual" -> "Bilingual AI Subtitles"
+        currentView == "bilingual" -> "Bilingual Subtitles"
         else -> "Subtitles"
     }
     val showBack = viewStack.size > 1
@@ -2593,8 +2593,8 @@ private fun BilingualEntryRow(isAiTranslating: Boolean, onClick: () -> Unit) {
     val settings by store.settings.collectAsState()
     val modeLabel = when (settings.mode) {
         com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.BILINGUAL -> "Bilingual"
-        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.ORIGINAL_ONLY -> "Original"
-        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.TRANSLATION_ONLY -> "Translation"
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.ORIGINAL_ONLY -> "Primary"
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.TRANSLATION_ONLY -> "Secondary"
         com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.OFF -> "Off"
     }
     Row(
@@ -2612,7 +2612,7 @@ private fun BilingualEntryRow(isAiTranslating: Boolean, onClick: () -> Unit) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Bilingual AI Subtitles",
+                text = "Bilingual Subtitles",
                 color = MobilePlayerTokens.InkPrimary,
                 fontSize = 13.5.sp,
                 fontWeight = FontWeight.SemiBold
