@@ -363,6 +363,11 @@ class PlayerViewModel @Inject constructor(
     // True only when the user explicitly picked a subtitle track from the menu (not AI/auto-match).
     // A late-arriving embedded preferred-language track overrides auto selections but never this.
     private var userPickedSubtitle: Boolean = false
+    // ARVIO Bilingual: the track the user explicitly chose from the menu (base id), held until they
+    // choose again, turn subtitles off, start a "Find best match" themselves, or the video changes.
+    // No automatic path (scan verdict, remembered match, late addon pick, AI source re-resolve)
+    // may swap it for another track — AI translation then always translates this exact track.
+    private var userLockedSubtitleId: String? = null
     private var playbackSessionStartTime: Long = 0L
     private val recentSourcePlayTracker = RecentSourcePlayTracker()
     private var recentSourceLoad: Deferred<RecentPlayedSource?>? = null
@@ -789,6 +794,7 @@ class PlayerViewModel @Inject constructor(
         resetPlaybackClock()
         hasManualSubtitleSelection = false
         userPickedSubtitle = false
+        userLockedSubtitleId = null
         autoMatchAttempted = false
         aiSourceSubtitle = null
         val cachedItem = mediaRepository.getCachedItem(mediaType, mediaId)
@@ -3280,6 +3286,7 @@ class PlayerViewModel @Inject constructor(
             resetPlaybackClock()
             hasManualSubtitleSelection = false
             userPickedSubtitle = false
+            userLockedSubtitleId = null
             autoMatchAttempted = false
             aiSourceSubtitle = null
             untranslatableSourceIds.clear()
@@ -3585,8 +3592,14 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun selectSubtitle(subtitle: Subtitle, isUserAction: Boolean = true) {
+        val locked = userLockedSubtitleId
+        if (!isUserAction && locked != null && subtitle.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX) != locked) {
+            Log.i("SubMatch", "automatic pick \"${subtitle.label}\" ignored: the user chose another track")
+            return
+        }
+        if (isUserAction) userLockedSubtitleId = subtitle.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
         hasManualSubtitleSelection = true
-        userPickedSubtitle = isUserAction
+        userPickedSubtitle = isUserAction || (locked != null)
         if (isUserAction) {
             // ARVIO Bilingual: an explicit pick always wins over the smart mode.
             leaveSmartBilingual()
@@ -3683,10 +3696,11 @@ class PlayerViewModel @Inject constructor(
 
     /** Commits [served] as the playing subtitle (a local copy of the user's pick, or the pick). */
     private fun applySelectedSubtitle(served: Subtitle) {
+        val usersOwnTrack = userLockedSubtitleId == served.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
         // ARVIO Bilingual: AI translation is a mode on top of the subtitle, not a track of its own.
         // While it is on, a newly picked text subtitle becomes the translation source (same file,
         // no track switching behind the user's back) instead of silently turning translation off.
-        val keepAi = _uiState.value.isAiTranslating && !_uiState.value.smartBilingualActive &&
+        val keepAi = usersOwnTrack && _uiState.value.isAiTranslating && !_uiState.value.smartBilingualActive &&
             !served.isBitmap && aiSubtitleEnabled && isAiTranslationConfigured()
         if (keepAi) {
             aiSourceSubtitle = served
@@ -3957,6 +3971,11 @@ class PlayerViewModel @Inject constructor(
      * found, fall back to the AI translation option when one is available.
      */
     fun runFindBestMatch(isUserAction: Boolean = true) {
+        if (!isUserAction && userLockedSubtitleId != null) {
+            Log.i("SubMatch", "auto scan skipped: the user chose a subtitle track")
+            return
+        }
+        if (isUserAction) userLockedSubtitleId = null
         // The timing-based scan is AI-independent — no aiSubtitleEnabled gate. Only the optional
         // AI interim below and the hearing fallback (gated at the scoring dispatch) need AI.
         // A user-triggered rescan means the current (possibly remembered) pick is unwanted —
@@ -4166,13 +4185,20 @@ class PlayerViewModel @Inject constructor(
             !it.isBitmap && it.id !in untranslatableSourceIds && _uiState.value.subtitles.any { s -> s.id == it.id } &&
                 (userInitiated || it.isEmbedded || userPickedSubtitle)
         }
-        val source = current ?: findAiSourceSubtitle(_uiState.value.subtitles) ?: aiSourceSubtitle ?: return
+        // A track the user chose stays the source, whatever an automatic caller would prefer.
+        val lockedTrack = userLockedSubtitleId?.let { id ->
+            _uiState.value.subtitles.firstOrNull { it.id == id && !it.isBitmap && it.id !in untranslatableSourceIds }
+                ?: _uiState.value.selectedSubtitle?.takeIf { it.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX) == id && !it.isBitmap }
+        }
+        if (userLockedSubtitleId != null && lockedTrack == null && !userInitiated) return
+        val source = lockedTrack ?: current ?: findAiSourceSubtitle(_uiState.value.subtitles) ?: aiSourceSubtitle ?: return
+        if (userInitiated) userLockedSubtitleId = source.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
         aiSourceSubtitle = source
         cancelSubtitleLocalization()
         hasManualSubtitleSelection = true
         // Translating the track already on screen keeps that pick protected; a source chosen here
         // (nothing was selected) may still be displaced by a late preferred-language track.
-        userPickedSubtitle = current != null
+        userPickedSubtitle = current != null || lockedTrack != null
         // The silent-scan path never populates aiTargetLanguageName (it's set only when a source
         // existed at scan start) — resolve from the preferred-language code so a late activation
         // doesn't hand the manager a BLANK target (which silently translates to nothing).
@@ -7631,6 +7657,7 @@ class PlayerViewModel @Inject constructor(
         // hearing scan (it also disconnects the Gemini Live audio stream). Without this, the scan
         // kept running with no way to cancel it. Mirrors selectSubtitle()'s user-action path.
         userPickedSubtitle = true
+        userLockedSubtitleId = null
         cancelFindBestMatch("subtitles disabled")
         subtitleSelectionJob?.cancel()
         cancelSubtitleLocalization()
