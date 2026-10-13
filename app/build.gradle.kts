@@ -68,13 +68,15 @@ android {
     flavorDimensions += "distribution"
 
     defaultConfig {
-        applicationId = "com.arvio.tv"
+        // ARVIO Bilingual: own package so it installs next to the official ARVIO (com.arvio.tv)
+        // instead of replacing it. Data/settings are therefore separate from the official app.
+        applicationId = "com.arvio.tv.bilingual"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Fire TV devices can be as low as Android 7.1 (API 25) or lower depending on model/OS.
         minSdk = 23
         targetSdk = 36
         versionCode = 320
-        versionName = "2.2"
+        versionName = "2.2-bilingual.1"
         buildConfigField("String", "GITHUB_OWNER", "\"ProdigyV21\"")
         buildConfigField("String", "GITHUB_REPO", "\"ARVIO\"")
         buildConfigField("Boolean", "FEATURE_PLUGINS_ENABLED", "false")
@@ -150,7 +152,10 @@ android {
         }
         create("sideload") {
             dimension = "distribution"
-            buildConfigField("Boolean", "SELF_UPDATE_ENABLED", "true")
+            // ARVIO Bilingual: the built-in updater downloads the *official* ARVIO release, which
+            // is a different package and would not update this build. Disabled; update this fork
+            // by installing a newer ARVIO Bilingual APK (same signing key) instead.
+            buildConfigField("Boolean", "SELF_UPDATE_ENABLED", "false")
             buildConfigField("Boolean", "FEATURE_PLUGINS_ENABLED", "true")
             buildConfigField("Boolean", "AUDIO_SYNC_AVAILABLE", "true")
         }

@@ -2,7 +2,7 @@
 <resources>
     <string name="library_sort_release_newest">Fecha de lanzamiento: más recientes primero</string>
     <string name="library_sort_release_oldest">Fecha de lanzamiento: más antiguos primero</string>
-    <string name="app_name">ARVIO</string>
+    <string name="app_name">ARVIO Bilingual</string>
     <string name="about_credits">Acerca de y Créditos</string>
     <string name="about_credits_description">Atribución de metadatos e información de derechos de autor</string>
     <string name="tmdb_attribution" translatable="false">Este producto utiliza la API de TMDB, pero no cuenta con el respaldo ni la certificación de TMDB.</string>

@@ -25,6 +25,36 @@ class SubtitleTranslationManager(
     }
 
     var isEnabled: Boolean = false
+        set(value) {
+            if (field != value) bilingualBus.clear()
+            field = value
+        }
+
+    // ── ARVIO Bilingual ─────────────────────────────────────────────────────
+    /**
+     * On-screen AI subtitle frame (source text + translation) consumed by the Compose
+     * BilingualSubtitleOverlay. While AI translation is active the renderer publishes here
+     * instead of rewriting Media3 cue text.
+     */
+    val bilingualBus = com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualCueBus()
+
+    /** What the AI subtitle layer shows. Synced from the persisted settings by PlayerScreen. */
+    @Volatile
+    var displayMode: com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode =
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.BILINGUAL
+
+    /** True when the current display mode needs translations at all (saves API calls otherwise). */
+    val translationNeeded: Boolean get() = isEnabled && displayMode.needsTranslation
+
+    /**
+     * Translates [text] through the normal queue/cache and reports whether it really succeeded.
+     * On failure the existing queue completes with the source text and does not cache it.
+     */
+    suspend fun translateDetailed(text: String): Pair<String, Boolean> {
+        val result = translate(text)
+        val ok = cache.containsKey(text)
+        return result to ok
+    }
     var removeHearingImpaired: Boolean = true
     @Volatile var removeSubtitleHearingImpaired: Boolean = false
 
@@ -152,6 +182,7 @@ class SubtitleTranslationManager(
     }
 
     fun reset() {
+        bilingualBus.clear()
         cache.clear()
         inFlight.clear()
         if (pendingCount.get() == 0) {
@@ -165,6 +196,8 @@ class SubtitleTranslationManager(
         // selected under the hood by "find best match" with AI translation off. Never spend
         // API requests unless translation is actually active.
         if (!isEnabled) return
+        // ARVIO Bilingual: "Original only" / "Off" never need translations.
+        if (!displayMode.needsTranslation) return
         val uncached = texts.filter { !cache.containsKey(it) && !inFlight.containsKey(it) }
         if (uncached.isEmpty()) return
         uncached.chunked(40).forEach { chunk ->

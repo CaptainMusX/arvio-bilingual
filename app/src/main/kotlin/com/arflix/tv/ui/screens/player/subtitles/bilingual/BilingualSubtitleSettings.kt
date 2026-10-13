@@ -1,0 +1,166 @@
+package com.arflix.tv.ui.screens.player.subtitles.bilingual
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+/**
+ * ARVIO Bilingual — what the AI-translation subtitle layer shows.
+ *
+ * Only applies while ARVIO's AI translation is active (an embedded text track is being
+ * translated by Gemini/Groq). Ordinary subtitle tracks are rendered by ARVIO's own SubtitleView
+ * exactly as upstream does, whatever this mode is.
+ */
+@Serializable
+enum class BilingualDisplayMode {
+    /** Source text only (no translation requests are made). */
+    @SerialName("original") ORIGINAL_ONLY,
+    /** Translation only (falls back to the source text while/if translation is unavailable). */
+    @SerialName("translation") TRANSLATION_ONLY,
+    /** Source and translation together. Default. */
+    @SerialName("bilingual") BILINGUAL,
+    /** Hide AI subtitles entirely. */
+    @SerialName("off") OFF;
+
+    val needsTranslation: Boolean get() = this == TRANSLATION_ONLY || this == BILINGUAL
+}
+
+@Serializable
+enum class BilingualOrder {
+    @SerialName("original_first") ORIGINAL_FIRST,
+    @SerialName("translation_first") TRANSLATION_FIRST,
+}
+
+@Serializable
+enum class SubtitleOutline(val widthDp: Float) {
+    @SerialName("none") NONE(0f),
+    @SerialName("thin") THIN(1.6f),
+    @SerialName("medium") MEDIUM(2.6f),
+    @SerialName("thick") THICK(3.8f);
+}
+
+/** Style of one language line block. All sizes are in sp / dp so they follow screen density. */
+@Serializable
+data class BilingualLineStyle(
+    val visible: Boolean = true,
+    val colorHex: String = "#FFFFFF",
+    val sizeSp: Int = 18,
+    val bold: Boolean = false,
+    /** A [com.arflix.tv.ui.screens.player.SubtitleFontOption] preference value. */
+    val font: String = "System",
+    val outline: SubtitleOutline = SubtitleOutline.THIN,
+    val outlineColorHex: String = "#000000",
+    val shadow: Boolean = true,
+    val background: Boolean = false,
+    /** Extra vertical offset of this block, dp. Positive moves the block up. */
+    val offsetDp: Int = 0,
+) {
+    fun sanitized(): BilingualLineStyle = copy(
+        colorHex = BilingualColors.normalizeHex(colorHex) ?: "#FFFFFF",
+        outlineColorHex = BilingualColors.normalizeHex(outlineColorHex) ?: "#000000",
+        sizeSp = sizeSp.coerceIn(MIN_SIZE_SP, MAX_SIZE_SP),
+        offsetDp = offsetDp.coerceIn(-MAX_OFFSET_DP, MAX_OFFSET_DP),
+    )
+
+    companion object {
+        const val MIN_SIZE_SP = 10
+        const val MAX_SIZE_SP = 48
+        const val MAX_OFFSET_DP = 120
+    }
+}
+
+@Serializable
+data class BilingualSubtitleSettings(
+    val mode: BilingualDisplayMode = BilingualDisplayMode.BILINGUAL,
+    val order: BilingualOrder = BilingualOrder.ORIGINAL_FIRST,
+    /** Vertical distance between the two language blocks, dp. */
+    val gapDp: Int = 4,
+    /** Distance of the whole group from the bottom of the video area, percent of its height. */
+    val bottomPercent: Int = 6,
+    val original: BilingualLineStyle = DEFAULT_ORIGINAL,
+    val translation: BilingualLineStyle = DEFAULT_TRANSLATION,
+) {
+    fun sanitized(): BilingualSubtitleSettings = copy(
+        gapDp = gapDp.coerceIn(0, MAX_GAP_DP),
+        bottomPercent = bottomPercent.coerceIn(0, MAX_BOTTOM_PERCENT),
+        original = original.sanitized(),
+        translation = translation.sanitized(),
+    )
+
+    companion object {
+        const val MAX_GAP_DP = 48
+        const val MAX_BOTTOM_PERCENT = 60
+
+        val DEFAULT_ORIGINAL = BilingualLineStyle(
+            colorHex = "#FFFFFF",
+            sizeSp = 17,
+            bold = false,
+            outline = SubtitleOutline.THIN,
+        )
+        val DEFAULT_TRANSLATION = BilingualLineStyle(
+            colorHex = "#F4D979",
+            sizeSp = 21,
+            bold = true,
+            outline = SubtitleOutline.THIN,
+        )
+        val DEFAULT = BilingualSubtitleSettings()
+    }
+}
+
+/** JSON persistence of [BilingualSubtitleSettings]. Tolerant: unknown keys and bad values fall back. */
+object BilingualSettingsCodec {
+    /** DataStore key name (profile-scoped through ProfileManager). Not part of cloud sync. */
+    const val PREF_NAME = "bilingual_subtitle_settings_v1"
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        coerceInputValues = true
+        isLenient = true
+    }
+
+    fun encode(settings: BilingualSubtitleSettings): String =
+        json.encodeToString(BilingualSubtitleSettings.serializer(), settings.sanitized())
+
+    fun decode(raw: String?): BilingualSubtitleSettings {
+        if (raw.isNullOrBlank()) return BilingualSubtitleSettings.DEFAULT
+        return try {
+            json.decodeFromString(BilingualSubtitleSettings.serializer(), raw).sanitized()
+        } catch (_: Exception) {
+            BilingualSubtitleSettings.DEFAULT
+        }
+    }
+}
+
+object BilingualColors {
+    /** Preset palette shown in the settings UI. */
+    val PRESETS: List<Pair<String, String>> = listOf(
+        "White" to "#FFFFFF",
+        "Warm Yellow" to "#F4D979",
+        "Yellow" to "#FFE600",
+        "Light Gray" to "#D0D0D0",
+        "Cyan" to "#7FE3FF",
+        "Green" to "#9CF28B",
+        "Pink" to "#FFB3D1",
+        "Orange" to "#FFB36B",
+    )
+
+    private val HEX = Regex("^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+
+    /** Returns "#RRGGBB" / "#AARRGGBB" in upper case, or null when [input] is not a colour. */
+    fun normalizeHex(input: String?): String? {
+        val trimmed = input?.trim() ?: return null
+        val m = HEX.matchEntire(trimmed) ?: return null
+        var digits = m.groupValues[1].uppercase()
+        if (digits.length == 3) digits = digits.map { "$it$it" }.joinToString("")
+        return "#$digits"
+    }
+
+    /** ARGB int for a hex colour; [fallback] when it cannot be parsed. */
+    fun parseArgb(hex: String?, fallback: Int = 0xFFFFFFFF.toInt()): Int {
+        val norm = normalizeHex(hex) ?: return fallback
+        val digits = norm.substring(1)
+        val value = digits.toLong(16)
+        return if (digits.length == 6) (0xFF000000L or value).toInt() else value.toInt()
+    }
+}

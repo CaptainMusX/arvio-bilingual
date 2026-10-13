@@ -3737,6 +3737,17 @@ fun PlayerScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+
+            // ARVIO Bilingual: AI-translation subtitles (English + Chinese) drawn as two
+            // independently styled layers above the video. Fed by the same single text track;
+            // ordinary subtitle tracks are still drawn by the PlayerView's SubtitleView above.
+            com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualSubtitleOverlay(
+                manager = viewModel.translationManager,
+                aiActive = uiState.isAiTranslating,
+                hidden = false,
+                isInPictureInPicture = isInPipMode,
+                modifier = Modifier.fillMaxSize()
+            )
         }
 
         PlayerLoadingOverlay(

@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -745,6 +746,7 @@ fun MobileSubtitlesSheet(
         currentView == "fonts" -> "Subtitle Font"
         currentView == "tracks" -> "${selectedLanguageName ?: "Track"} Subtitles"
         currentView == "substyle" -> "Subtitle Settings"
+        currentView == "bilingual" -> "Bilingual AI Subtitles"
         else -> "Subtitles"
     }
     val showBack = viewStack.size > 1
@@ -775,7 +777,19 @@ fun MobileSubtitlesSheet(
                     onUpdateDelay = onUpdateSubtitleDelay
                 )
             }
+            currentView == "bilingual" -> {
+                com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualSubtitleSettingsPanel(
+                    modifier = Modifier.fillMaxWidth(),
+                    aiAvailable = isAiAvailable || isAiTranslating,
+                    aiTranslating = isAiTranslating,
+                    onEnableAiTranslation = { onActivateAiTranslation() },
+                )
+            }
             currentView == "substyle" -> {
+                BilingualEntryRow(
+                    isAiTranslating = isAiTranslating,
+                    onClick = { viewStack.add("bilingual") }
+                )
                 SubtitleSettingsContent(
                     subtitleSizePct = subtitleSizePct,
                     onUpdateSubtitleSize = onUpdateSubtitleSize,
@@ -961,6 +975,13 @@ fun MobileSubtitlesSheet(
                             }
                             SubtitleBadge(text = if (isFindingBestMatch) "Scanning" else "Auto Sync")
                         }
+                    }
+
+                    item {
+                        BilingualEntryRow(
+                            isAiTranslating = isAiTranslating,
+                            onClick = { viewStack.add("bilingual") }
+                        )
                     }
 
                     if (isAiAvailable || isAiTranslating) {
@@ -2558,5 +2579,51 @@ fun MobileSubtitleRepositionOverlay(
                 }
             }
         }
+    }
+}
+
+
+/** ARVIO Bilingual: entry into the bilingual AI subtitle settings (mode, order, gap, colours...). */
+@Composable
+private fun BilingualEntryRow(isAiTranslating: Boolean, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val store = remember {
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualSubtitleSettingsStore.from(context)
+    }
+    val settings by store.settings.collectAsState()
+    val modeLabel = when (settings.mode) {
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.BILINGUAL -> "Bilingual"
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.ORIGINAL_ONLY -> "Original"
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.TRANSLATION_ONLY -> "Translation"
+        com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.OFF -> "Off"
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MobilePlayerTokens.ShapeCard)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Bilingual AI Subtitles",
+                color = MobilePlayerTokens.InkPrimary,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = if (isAiTranslating) "English + Chinese mode, colours, order, gap, position"
+                    else "Style for AI Translation (turn it on below)",
+                color = MobilePlayerTokens.InkTertiary,
+                fontSize = 11.sp
+            )
+        }
+        SubtitleBadge(text = modeLabel)
     }
 }

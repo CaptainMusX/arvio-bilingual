@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   label:
+    if: github.repository == 'ProdigyV21/ARVIO'  # ARVIO Bilingual: upstream-only job
     name: Auto Label PR
     runs-on: ubuntu-latest
     steps:

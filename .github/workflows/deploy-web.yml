@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.repository == 'ProdigyV21/ARVIO'  # ARVIO Bilingual: upstream-only job
     name: Build and deploy web.arvio.tv
     runs-on: ubuntu-latest
     timeout-minutes: 20

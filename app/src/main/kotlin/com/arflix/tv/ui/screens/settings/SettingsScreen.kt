@@ -5795,6 +5795,8 @@ private fun MobileSettingsSubPage(
                 }
             }
             "Audio & Subtitles" -> {
+                // ARVIO Bilingual: English + Chinese AI subtitle style (separate from Secondary Subtitle).
+                com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualSettingsEntry()
                 MobileSettingsCategory(title = stringResource(R.string.settings_section_subtitles)) {
                     MobileSettingsRow(
                         icon = Icons.Default.Subtitles,

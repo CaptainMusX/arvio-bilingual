@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   container:
+    if: github.repository == 'ProdigyV21/ARVIO'  # ARVIO Bilingual: upstream-only job
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -102,7 +103,7 @@ jobs:
           retention-days: 1
 
   publish:
-    if: github.repository == 'ProdigyV21/ARVIO' && github.event_name == 'workflow_dispatch' && inputs.publish_preview
+    if: github.repository == 'ProdigyV21/ARVIO' && (github.repository == 'ProdigyV21/ARVIO' && github.event_name == 'workflow_dispatch' && inputs.publish_preview)
     needs: container
     runs-on: ubuntu-latest
     timeout-minutes: 10

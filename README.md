@@ -1,300 +1,156 @@
+# ARVIO Bilingual
 
-<div align="center">
+**ARVIO Bilingual** 是基于开源项目 [ARVIO](https://github.com/ProdigyV21/ARVIO)（Apache-2.0，作者 ProdigyV21 及贡献者）的个人定制版本，
+在保留 ARVIO 全部核心功能的前提下，为 **AI 字幕翻译** 增加了真正的**英中双语同屏显示**和完整的双语字幕样式设置。
 
-  <img src="web/public/arvio-logo.svg" alt="ARVIO" width="150" />
+> 本仓库不是 ARVIO 官方项目，也不隶属于 ARVIO。原项目说明见 [`docs/README.upstream.md`](docs/README.upstream.md)。
 
-  <br />
-
-  <p>A modern, open-source media hub for Android TV, phones, tablets, and the web.</p>
-
-  <p>
-    Browse your own media sources with a unified experience across your devices.
-  </p>
-
-  <p>
-    <a href="https://github.com/ProdigyV21/ARVIO">GitHub</a>
-    ·
-    <a href="https://github.com/ProdigyV21/ARVIO/releases">Releases</a>
-    ·
-    <a href="https://web.arvio.tv">ARVIO Web</a>
-  </p>
-
-  <br />
-
-  <img src="https://img.shields.io/github/v/release/ProdigyV21/ARVIO?style=for-the-badge&logo=github" alt="Latest Version" />
-  <img src="https://img.shields.io/github/downloads/ProdigyV21/ARVIO/total?style=for-the-badge&logo=github" alt="Downloads" />
-  <img src="https://img.shields.io/github/stars/ProdigyV21/ARVIO?style=for-the-badge&logo=github" alt="Stars" />
-  <img src="https://img.shields.io/github/license/ProdigyV21/ARVIO?style=for-the-badge" alt="License" />
-
-  <br />
-
-  <img src="https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android" />
-  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin" />
-  <img src="https://img.shields.io/badge/Jetpack%20Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
-
-  <br />
-  <br />
-
-  <a href="https://web.arvio.tv"><img src="https://img.shields.io/badge/ARVIO-Web%20App-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="ARVIO Web App" /></a>
-
-  <br />
-  <br />
-
-  <a href="https://trendshift.io/repositories/28671?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-28671" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/28671/weekly?language=Kotlin" alt="ProdigyV21/ARVIO | Trendshift" width="250" height="55" /></a>
-
-
-</div>
-
-
+- 上游仓库：https://github.com/ProdigyV21/ARVIO
+- 基于的上游提交：`59c8af02f52bc26f2102224b338d28ccfca023de`（2026-10-12，`fix(simkl): gate playback sync on activities and persist checkpoints`）
+- 许可证：Apache License 2.0（见 [`LICENSE`](LICENSE)），原作者版权与声明保持不变；本仓库的修改同样以 Apache-2.0 发布。
 
 ---
 
-# ARVIO
+## 与官方 ARVIO 的区别
 
-ARVIO is an Android media hub for TV, phone, and tablet form factors. This repository is maintained as a source-code and development mirror for the Android application.
-
-The app provides a media browser, player shell, profile support, optional cloud sync, IPTV playlist support, catalog configuration, home-server integrations, and integrations with user-configured sources. ARVIO does not host, store, sell, or distribute movies, series, live TV channels, playlists, streams, or other third-party media.
-
-## Self-Host ARVIO Web
-
-The webapp can run on your own computer or server **without an ARVIO Premium subscription**, using your own TMDB, Trakt, Simkl and other integration credentials. The paid hosted webapp is optional.
-
-Start with the [webapp setup guide](web/README.md): it includes Node.js and Docker Compose instructions, a self-hosted environment template, and a configuration checker. See [self-hosting details](web/docs/SELF-HOSTING.md) for security, updates and limitations. Local profiles are stored per browser; this setup does not provide cross-device ARVIO Cloud sync.
-
-## Repository Purpose
-
-
-
-This GitHub repository is for:
-
-- Source code review and development
-- Issue investigation and technical discussion
-- Build documentation
-- License and privacy documentation
-- Contribution review
-
-It is not intended as an advertising page, download landing page, or content distribution repository.
-
-## Features
-
-- Android TV, Fire TV, phone, and tablet UI
-- TMDB-powered movie, series, cast, collection, franchise, and metadata browsing
-- IPTV M3U/Xtream playlist support with provider categories, favorites, hidden categories, EPG, and mobile/tablet fullscreen playback
-- Optional ARVIO Cloud sync for profiles, settings, catalogs, IPTV state, watch state, and custom profile avatars
-- Optional per-profile Trakt.tv integration for watchlist, history, progress, and continue watching
-- Catalog management with manual URLs and public Trakt/MDBList list discovery
-- Home-server source and catalog support for user-owned Jellyfin, Emby, and Plex libraries
-- Optional Telegram integration for searching video files in your own connected channels and groups
-- Third-party addon support for user-configured sources
-- Watchlist and continue-watching state with profile isolation
-- Subtitle and audio track selection, subtitle language filtering, and AI subtitle tools
-- Profile PINs and custom profile avatars
-- ExoPlayer/Media3 playback with TV remote, mobile, and tablet controls
-
-
-## Availability
-
-ARVIO is available across official app stores, direct GitHub releases, and Obtainium:
-
-<p align="left">
-  <a href="https://play.google.com/store/apps/details?id=com.arvio.tv"><img src="assets/badges/badge_google_play.png" alt="Get it on Google Play" width="160"></a>
-  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/ProdigyV21/ARVIO"><img src="assets/badges/badge_obtainium.png" alt="Get it on Obtainium" width="160"></a>
-  <a href="https://github.com/ProdigyV21/ARVIO/releases/latest"><img src="assets/badges/badge_github.png" alt="Get it on GitHub" width="160"></a>
-</p>
-
-### Obtainium (Recommended for Sideloading)
-Install and automatically receive updates directly from GitHub Releases using [Obtainium](https://github.com/ImranR98/Obtainium):
-
-- **1-Click Add:** Click the **Get it on Obtainium** badge above or open [`obtainium://add/https://github.com/ProdigyV21/ARVIO`](obtainium://add/https://github.com/ProdigyV21/ARVIO) on your Android device.
-- **Manual App Source URL:** `https://github.com/ProdigyV21/ARVIO`
-- See [Obtainium Setup Guide](docs/distribution/OBTAINIUM.md) for pre-configured JSON import and APK filtering details.
-
-### Direct GitHub Releases
-Signed APKs (`ARVIO-v*-sideload-release.apk`) and checksums (`SHA256SUMS.txt`) are published on [GitHub Releases](https://github.com/ProdigyV21/ARVIO/releases/latest).
-
-
-
-
-## Support ARVIO
-
-ARVIO is a free hobby project built and maintained with a lot of time, testing, hosting, and service costs. The goal is to keep ARVIO free as it grows, but running and improving it still costs money every month.
-
-If ARVIO helps you and you want to support development, donations are appreciated:
-
-[Support ARVIO on Ko-fi](https://ko-fi.com/arvio/tiers)
-
-## Screenshots
-
-ARVIO 2.0 across TV, phones, tablets and the web. Select an image to view it in full, or explore the [complete screenshot gallery](https://arvio.tv/#screens).
-
-### Android TV
-
-| Home | Details |
-|---|---|
-| ![ARVIO 2.0 tv · Home](netlify-arvio-tv-site/assets/screenshots-v2/tv/01-home.webp) | ![ARVIO 2.0 tv · Details](netlify-arvio-tv-site/assets/screenshots-v2/tv/02-details.webp) |
-
-| Library | Homeserver |
-|---|---|
-| ![ARVIO 2.0 tv · Library](netlify-arvio-tv-site/assets/screenshots-v2/tv/03-library.webp) | ![ARVIO 2.0 tv · Homeserver](netlify-arvio-tv-site/assets/screenshots-v2/tv/04-homeserver.webp) |
-
-| Live TV | Sports |
-|---|---|
-| ![ARVIO 2.0 tv · Live TV](netlify-arvio-tv-site/assets/screenshots-v2/tv/05-tv.webp) | ![ARVIO 2.0 tv · Sports](netlify-arvio-tv-site/assets/screenshots-v2/tv/06-sports.webp) |
-
-### Mobile
-
-| Home | Library | Live TV |
+| 项目 | 官方 ARVIO | ARVIO Bilingual |
 |---|---|---|
-| ![ARVIO 2.0 mobile · Home](netlify-arvio-tv-site/assets/screenshots-v2/phone/01-home.webp) | ![ARVIO 2.0 mobile · Library](netlify-arvio-tv-site/assets/screenshots-v2/phone/03-library.webp) | ![ARVIO 2.0 mobile · Live TV](netlify-arvio-tv-site/assets/screenshots-v2/phone/05-tv.webp) |
+| AI 翻译字幕 | 用译文**替换**原文 | 原文与译文**同屏双语**（也可只显示原文/只显示译文/关闭） |
+| 双语样式 | — | 中英文各自的颜色（色板 + HEX）、字号、字体/字重、描边、阴影、背景框、显示/隐藏、独立上下偏移；上下顺序、双语间距、整体位置；实时预览 |
+| 包名 (applicationId) | `com.arvio.tv` | `com.arvio.tv.bilingual` —— 可与官方版**并存安装** |
+| 应用名 | ARVIO | ARVIO Bilingual |
+| 应用内自动更新 | 从官方 Releases 更新 | **已关闭**（避免下载官方 APK 覆盖/干扰），请手动安装新版 ARVIO Bilingual |
+| 构建 | 官方 CI + 官方密钥 | 本仓库 GitHub Actions（`ARVIO Bilingual APK` 工作流） |
 
-### Tablet · Landscape
+其余功能（海报墙、详情、Stremio Addons、插件/扩展、HTTP/HTTPS 播放、普通字幕、Find Best Match、Gemini/Groq 翻译与预翻译缓存等）沿用上游代码，未做改动。
 
-| Home | Service collections |
+---
+
+## 双语字幕功能
+
+工作流程：
+
+```
+视频内嵌英文文本字幕 (SRT / ASS/SSA / WebVTT / TX3G…，Media3 可解码的文本字幕)
+        │  同一条 Media3 字幕轨道、同一个 TextRenderer（不加载第二条轨道/第二个解码器）
+        ▼
+ARVIO 现有 SubtitleTranslationManager（批量队列、缓存、2 分钟预翻译窗口）
+        │  Gemini / Groq（沿用 App 内已配置的 API Key）
+        ▼
+双语字幕层（Compose）：英文原文 + 简体中文译文，严格使用原字幕的时间轴
+```
+
+- 默认：**英文在上（白色 #FFFFFF，略小），中文在下（暖黄 #F4D979，略大、加粗）**，两者都是黑色细描边 + 阴影，居中。
+- 翻译尚未返回时先显示英文，中文一到立即补上；翻译失败/超时/限流时保留英文，不会出现字幕消失。
+- 同一时刻多条字幕 Cue、多行字幕会合并成一个块显示，自动换行，两块之间不会重叠，也不会被推出屏幕。
+- 拖动进度条、切换字幕轨道、切换片源或剧集时，旧的异步翻译结果会被丢弃（每条字幕有独立的代号），不会“串台”。
+- 相同文本只翻译一次：实时路径与预翻译共享 ARVIO 原有的缓存和“进行中”请求，双语模式不会增加 API 请求。
+- “仅原文 / 关闭”模式下不发送任何翻译请求。
+- 普通（非 AI）字幕轨道仍由 ARVIO 原有的 SubtitleView 渲染，样式与行为与官方一致。
+
+### 显示模式
+
+| 模式 | 说明 |
 |---|---|
-| ![ARVIO 2.0 tablet · Home](netlify-arvio-tv-site/assets/screenshots-v2/tablet/01-home.webp) | ![ARVIO 2.0 tablet · Service collections](netlify-arvio-tv-site/assets/screenshots-v2/tablet/07-services.webp) |
+| **Bilingual**（默认） | 英文 + 中文 |
+| Original only | 只显示英文原文（不调用翻译） |
+| Translation only | 只显示中文；译文未就绪/失败时临时显示英文 |
+| Off | 关闭 AI 字幕 |
 
-Phone and tablet captures use demonstration libraries and channels.
+---
 
-### ARVIO Web — iPhone, iPad & any browser
+## 如何启用 Gemini AI 翻译
 
-Use ARVIO in your browser at [web.arvio.tv](https://web.arvio.tv), with optional ARVIO Cloud sync for profiles, watchlists and progress. You can also [self-host the web app](web/README.md). The captures below show the desktop browser layout.
+1. 打开 **Settings → AI Subtitles**（ARVIO 原有设置），选择模型（Gemini 或 Groq）并填入你的 API Key。
+   ARVIO Bilingual 是独立安装的应用，需要在其中重新填写一次 Key（官方版中的设置不会自动带过来）。
+2. 在 **Settings → Languages → Default Subtitle** 选择 **Chinese（简体中文）**——ARVIO 的 AI 翻译目标语言就是首选字幕语言。
+3. 播放带有**英文内嵌文本字幕**的视频，打开播放器 **Subtitles** 面板，打开 **AI Translation (Chinese)**。
+   （也可以开启 ARVIO 原有的 *Auto-Select AI Translation*，没有中文字幕时自动启用。）
+4. 默认即为双语显示。
 
-| Home | Details |
+没有可翻译的英文文本字幕（例如只有 PGS 图片字幕）或没有配置 API Key 时，双语设置面板顶部会显示明确提示。
+
+---
+
+## 调整中英文颜色、位置、大小及间距
+
+入口（任一处修改都会立即生效并自动保存）：
+
+- **播放器内**：Subtitles 面板 → **Bilingual AI Subtitles**（Subtitles 首页和 Subtitle Settings 页都有入口）
+- **全局设置**：Settings → **Audio & Subtitles** → **Bilingual AI Subtitles**
+
+**基础设置**：显示模式；上下顺序（English on top / Chinese on top）；双语间距（0–48 dp）；整体位置（距底部 0–60%）；英文/中文字号；英文/中文颜色（色板 + HEX，可输入 `#RRGGBB` 或 `#AARRGGBB`）。
+
+**高级设置**（打开 *Advanced settings*）：中英文分别设置 显示/隐藏、独立垂直偏移（±120 dp）、加粗、字体（复用 ARVIO 字幕字体）、描边（无/细/中/粗）及描边颜色、阴影、背景框。
+
+顶部有实时预览区域。所有设置保存在 ARVIO 原有的 DataStore（按 Profile 区分），退出播放器、重启 App、切换影片后依然有效。
+双语设置**不参与云同步**（没有修改 ARVIO 的云同步协议）。
+
+---
+
+## 安装 APK
+
+1. 打开本仓库的 **Releases**（或 Actions 运行记录中的 Artifact），下载 `ARVIO-Bilingual-…-signed.apk`。
+   Artifact 下载后是一个 zip，解压得到 APK。
+2. 在手机上允许“安装未知来源应用”，安装 APK。它的包名是 `com.arvio.tv.bilingual`，会和官方 ARVIO 并存，不会覆盖官方版。
+3. 在 ARVIO Bilingual 中重新登录/添加插件和 Addons（两个应用的数据互相独立）。
+
+**签名说明**：当前构建使用为本仓库生成的**测试用途签名密钥**（`*-stable-signed.apk`），只保存在仓库 Actions Secrets 中，
+后续通过同一工作流构建的新版可以直接覆盖升级。若仓库 Secrets 中的密钥丢失或被更换，新 APK 将无法覆盖安装，需要先卸载旧版
+（会丢失本应用内的设置）。文件名带 `-debug-signed` 的 APK 是临时调试签名，**不能**用于后续升级。
+
+---
+
+## 通过 GitHub Actions 重新编译
+
+1. 仓库 → **Actions** → **ARVIO Bilingual APK** → **Run workflow**（可勾选 *create_release* 同时发布 Release）。
+2. 完成后在运行页面底部 **Artifacts** 下载 APK；推送形如 `v2.2-bilingual.2` 的 tag 也会自动构建并发布 Release。
+
+可选的仓库 Secrets（Settings → Secrets and variables → Actions）：
+
+| Secret | 作用 |
 |---|---|
-| ![ARVIO 2.0 web · Home](netlify-arvio-tv-site/assets/screenshots-v2/web/01-home.webp) | ![ARVIO 2.0 web · Details](netlify-arvio-tv-site/assets/screenshots-v2/web/02-details.webp) |
+| `TMDB_API_KEY` | **海报墙/影片信息所需**的 TMDB v3 Key（themoviedb.org 免费申请）。未设置时目录与详情无法加载。 |
+| `BILINGUAL_KEYSTORE_BASE64` / `BILINGUAL_KEYSTORE_PASSWORD` / `BILINGUAL_KEY_ALIAS` / `BILINGUAL_KEY_PASSWORD` | 稳定签名密钥 |
+| `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` / `MDBLIST_CLIENT_ID` / `SIMKL_CLIENT_ID` | 可选的追踪服务 |
 
-| Library | Service collections |
-|---|---|
-| ![ARVIO 2.0 web · Library](netlify-arvio-tv-site/assets/screenshots-v2/web/03-library.webp) | ![ARVIO 2.0 web · Service collections](netlify-arvio-tv-site/assets/screenshots-v2/web/07-services.webp) |
+CI 不需要任何 Gemini/Groq Key；密钥只通过 Secrets 注入，不会写入代码或日志。
+本地构建：JDK 17 + Android SDK 36，`cp secrets.defaults.properties secrets.properties` 后运行
+`./gradlew :app:assembleSideloadRelease`（sideload 变体包含插件功能）。
 
-Screenshots show connected sources and example setups. ARVIO includes no media or subscriptions.
+---
 
-## Content And Source Policy
-
-ARVIO is a media browser and player interface for user-configured sources. It works like a media player or browser: users provide their own services, playlists, addons, and URLs.
-
-ARVIO does not supply a film, TV or live-channel subscription. Playback sources must be configured by the user. Catalog metadata and artwork do not grant viewing rights. Use only services and media you are authorized to access.
-
-We review reports concerning material and links controlled by ARVIO. See [copyright reporting](COPYRIGHT.md) for how to contact us. Material hosted by an independent provider may also need to be reported to that provider; this does not prevent reporting an ARVIO-controlled link or asset to us.
-
-Contributors must not submit media without appropriate permission, credentials, private keys, access tokens, or links intended to enable unauthorized access to content. Public demonstration assets require documented permission, not just an API URL.
-
-### Metadata Credits
-
-<img src="app/src/main/assets/tmdb-logo.svg" alt="TMDB" width="100">
-
-This product uses the TMDB API but is not endorsed or certified by TMDB.
-
-TMDB attribution does not establish rights to every image. Commercial uses of TMDB require the applicable agreement. Other services and trademarks belong to their respective owners; integration does not imply endorsement.
-
-## Cloud Sync
-
-ARVIO Cloud is optional. When enabled, it can sync profiles, settings, catalogs, IPTV state, watch progress, watchlist state, and profile avatars across devices. See [PRIVACY.md](PRIVACY.md) for details and account deletion instructions.
-
-## Build And Run
-
-Requirements:
-
-- Android Studio or Android SDK command-line tools
-- JDK 17
-- Android SDK 35
-
-Use the tracked Gradle wrapper:
+## 从 upstream 同步 ARVIO 更新
 
 ```bash
-./gradlew :app:assemblePlayDebug
-./gradlew :app:assembleSideloadDebug
+git remote add upstream https://github.com/ProdigyV21/ARVIO.git   # 首次
+git fetch upstream
+git checkout main
+git merge upstream/main          # 或 git rebase upstream/main
+# 解决冲突（通常集中在 AiSubtitleRenderersFactory.kt、MobilePlayerPanels.kt、PlayerScreen.kt）
+./gradlew :app:testSideloadDebugUnitTest --tests 'com.arflix.tv.ui.screens.player.subtitles.bilingual.*'
+git push origin main
 ```
 
-On Windows PowerShell or Command Prompt:
+本仓库的修改集中在 `app/src/main/kotlin/com/arflix/tv/ui/screens/player/subtitles/bilingual/`，对上游文件只做了少量插入，
+便于合并。详见 [`DEVELOPMENT.md`](DEVELOPMENT.md)。
 
-```powershell
-.\gradlew.bat :app:assemblePlayDebug
-.\gradlew.bat :app:assembleSideloadDebug
-```
+---
 
-APK builds include 32-bit and 64-bit ARM by default. For an x86/x86_64 emulator,
-add `-PincludeX86Abis=true` to the Gradle command.
+## 已知问题与限制
 
-Install a debug build on a connected Android TV, Fire TV, emulator, phone, or tablet:
+- 需要视频内嵌（或 ARVIO 能选到的）**英文文本字幕**；PGS/VobSub 图片字幕无法翻译。
+- 双语模式下，ASS/SSA 的特效位置、逐字颜色等内嵌样式不会保留，统一以底部居中的双语块显示（普通字幕模式不受影响）。
+- 翻译质量与速度取决于 Gemini/Groq；免费额度限流时会暂时只显示英文。
+- 自带构建没有官方的 TMDB/Trakt/Google 等私有凭据：未配置 `TMDB_API_KEY` 时海报墙不可用；**Google 一键登录在本构建中不可用**
+  （需要官方的 OAuth 客户端与签名）；Discord Rich Presence（官方私有 SDK）不包含在内。
+- 两个应用都注册了 `arvio://`、`stremio://` 链接，打开此类链接时 Android 可能会让你选择用哪个应用打开。
+- 应用内自动更新已关闭。
+- 双语设置目前只在手机端界面提供；Android TV 端会显示双语字幕（使用已保存的设置），但未添加 TV 遥控器专用的设置界面。
+- 尚未在真机上完成验证的项目见最新 Release 说明 / 验收报告。
 
-```bash
-./gradlew :app:installPlayDebug
-./gradlew :app:installSideloadDebug
-```
+---
 
-For network ADB devices:
+## 致谢
 
-```bash
-adb connect <device-ip>:5555
-adb install -r app/build/outputs/apk/sideload/debug/app-sideload-debug.apk
-```
-
-Build variants:
-
-- `play`: Play Store build, self-update disabled.
-- `sideload`: Direct APK build, self-update enabled.
-- `debug`: development build.
-- `staging`: release-like build signed with the debug keystore for upgrade testing.
-- `release`: production build. Use a private release keystore for distribution.
-
-## Local Configuration
-
-Cloud sync, Google sign-in, and Supabase-backed auth require local secrets. Copy the defaults file and fill in real values:
-
-```bash
-cp secrets.defaults.properties secrets.properties
-```
-
-`secrets.properties` is ignored and must not be committed.
-
-Discord Rich Presence is optional and requires Discord's separately licensed
-Android Partner SDK. Place the approved file at
-`app/libs/discord_partner_sdk.aar` and set `DISCORD_CLIENT_ID` in
-`secrets.properties`. Builds without that AAR remain valid, but show Discord as
-unavailable instead of compiling a simulated connection. Do not commit or
-redistribute the AAR unless your Discord SDK agreement explicitly permits it.
-Trusted signed builds restore the AAR from the private
-`ProdigyV21/ARVIO-private-dependencies` repository through a read-only deploy
-key stored as the `DISCORD_SDK_DEPLOY_KEY` repository secret.
-
-TMDB and Trakt credentials are not committed to the repository. When a valid
-Supabase config is present, app requests are routed through the tracked
-`tmdb-proxy` and `trakt-proxy` Edge Functions, where those credentials should be
-stored as Supabase function secrets. Forks that do not use those proxy functions
-can still add their own local `TMDB_API_KEY`, `TRAKT_CLIENT_ID`, and
-`TRAKT_CLIENT_SECRET` values in `secrets.properties` for direct local testing.
-
-For signed release builds, copy the keystore template and fill in local signing values:
-
-```bash
-cp keystore.properties.template keystore.properties
-```
-
-`keystore.properties` and keystore files are ignored and must stay private.
-
-## Release Checks
-
-Before publishing a build, run:
-
-```bash
-./gradlew :app:compilePlayDebugKotlin
-./gradlew :app:assemblePlayRelease
-./gradlew :app:assembleSideloadRelease
-```
-
-Smoke-test startup, profile switching, playback, stream fallback, subtitle/audio switching, IPTV/EPG loading, addon add/remove, search, settings navigation, background sync, and repeated player open/close on the supported device classes.
-
-## Privacy
-
-See [PRIVACY.md](PRIVACY.md) for the privacy policy. Cloud account and synced data deletion is available at [auth.arvio.tv/delete](https://auth.arvio.tv/delete).
-
-## License
-
-This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
-
-## AI Disclosure
-
-This application was developed with significant AI assistance. Contributions should still be reviewed, tested, and treated as normal source code changes.
-
-If you have concerns about using AI-generated software, please do not use this application.
+ARVIO © ProdigyV21 and contributors — Apache License 2.0. Media3/ExoPlayer © The Android Open Source Project — Apache License 2.0.
