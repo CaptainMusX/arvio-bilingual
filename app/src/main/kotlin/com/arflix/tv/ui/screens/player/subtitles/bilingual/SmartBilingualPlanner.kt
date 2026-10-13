@@ -60,11 +60,15 @@ data class BilingualNotice(val kind: Kind, val detail: String = "", val id: Long
         SAME_LANGUAGE,
         NO_TEXT_SUBTITLE,
         USER_PICK_RESPECTED,
+        MERGE_NO_SECONDARY,
+        MERGE_UNRELIABLE,
+        AI_FORCED,
+        AI_NOT_CONFIGURED,
     }
 
     /** True for notices that tell the user something is missing or degraded. */
     val isWarning: Boolean
-        get() = kind != Kind.MERGING_EMBEDDED && kind != Kind.AI_NO_SECONDARY_TRACK
+        get() = kind != Kind.MERGING_EMBEDDED && kind != Kind.AI_NO_SECONDARY_TRACK && kind != Kind.AI_FORCED
 
     fun message(): String = when (kind) {
         Kind.MERGING_EMBEDDED -> "Bilingual: merging embedded $detail subtitles (no AI)"
@@ -77,6 +81,10 @@ data class BilingualNotice(val kind: Kind, val detail: String = "", val id: Long
         Kind.SAME_LANGUAGE -> "Bilingual: primary and secondary are both $detail — choose a different language in Bilingual settings"
         Kind.NO_TEXT_SUBTITLE -> "Bilingual: this video has no readable text subtitle (image subtitles can't be used)"
         Kind.USER_PICK_RESPECTED -> "Bilingual: keeping the subtitle you picked"
+        Kind.MERGE_NO_SECONDARY -> "Merge mode: no embedded $detail text track to merge (AI is off in this mode). Pick the tracks in Subtitles → Bilingual Subtitles."
+        Kind.MERGE_UNRELIABLE -> "Merge mode: the $detail track doesn't line up with the primary (AI is off in this mode). Pick other tracks in Subtitles → Bilingual Subtitles."
+        Kind.AI_FORCED -> "AI Translate mode: translating into $detail"
+        Kind.AI_NOT_CONFIGURED -> "AI Translate mode needs a Gemini/Groq key (Settings → AI Subtitles) — showing one language"
     }
 
     private companion object {
@@ -104,6 +112,12 @@ object SmartBilingualPlanner {
         val aiConfigured: Boolean,
         /** Secondary tracks already found not to line up with this video's primary. */
         val unreliableSecondaryIds: Set<String> = emptySet(),
+        /** Auto / Merge / AI Translate. */
+        val mode: BilingualGenerationMode = BilingualGenerationMode.AUTO,
+        /** Track the user chose as primary in the bilingual panel (wins over everything). */
+        val primaryOverrideId: String? = null,
+        /** Track the user chose as secondary in the bilingual panel (used whatever its language). */
+        val secondaryOverrideId: String? = null,
     )
 
     fun plan(input: Input): SmartPlan {
@@ -115,6 +129,23 @@ object SmartBilingualPlanner {
         if (SubtitleLanguageMatcher.sameLanguage(primaryLang, secondaryLang) &&
             SubtitleLanguageMatcher.match(primaryLang, secondaryLang) != LanguageMatch.NONE) {
             return SmartPlan.PrimaryOnly(primary, BilingualNotice.Kind.SAME_LANGUAGE)
+        }
+
+        // AI Translate mode: always translate the chosen primary, whatever tracks exist.
+        if (input.mode == BilingualGenerationMode.AI_TRANSLATE) {
+            if (SubtitleLanguageMatcher.sameLanguage(primaryLang, secondaryLang) &&
+                SubtitleLanguageMatcher.match(primaryLang, secondaryLang) != LanguageMatch.NONE) {
+                return SmartPlan.PrimaryOnly(primary, BilingualNotice.Kind.SAME_LANGUAGE)
+            }
+            return if (input.aiConfigured) SmartPlan.AiTranslate(primary, primaryLang, secondaryLang, BilingualNotice.Kind.AI_FORCED)
+            else SmartPlan.PrimaryOnly(primary, BilingualNotice.Kind.AI_NOT_CONFIGURED)
+        }
+
+        // A secondary track picked by hand is used as long as it is readable text.
+        text.firstOrNull { it.id == input.secondaryOverrideId && it.id != primary.id && it.tapTrackId != null }?.let { manual ->
+            if (manual.id !in input.unreliableSecondaryIds) {
+                return SmartPlan.MergeEmbedded(primary, manual, primaryLang, manual.language ?: secondaryLang, ambiguousScript = false)
+            }
         }
 
         val pool = text.filter { it.isEmbedded && it.id != primary.id && !it.isForced }
@@ -138,6 +169,13 @@ object SmartBilingualPlanner {
         val imageOnly = input.candidates.any {
             it.isBitmap && it.isEmbedded && SubtitleLanguageMatcher.match(it.language, secondaryLang) != LanguageMatch.NONE
         }
+        if (input.mode == BilingualGenerationMode.MERGE) {
+            return SmartPlan.PrimaryOnly(
+                primary,
+                if (hadUnreliable || input.secondaryOverrideId in input.unreliableSecondaryIds) BilingualNotice.Kind.MERGE_UNRELIABLE
+                else BilingualNotice.Kind.MERGE_NO_SECONDARY,
+            )
+        }
         if (input.aiConfigured) {
             val why = when {
                 hadUnreliable -> BilingualNotice.Kind.AI_SECONDARY_UNRELIABLE
@@ -158,6 +196,7 @@ object SmartBilingualPlanner {
      * the audio language, then English, then any non-forced text track.
      */
     internal fun resolvePrimary(input: Input, text: List<SubtitleCandidate>): SubtitleCandidate? {
+        text.firstOrNull { it.id == input.primaryOverrideId }?.let { return it }
         val selected = text.firstOrNull { it.id == input.selectedId }
         if (input.userPinnedSelection && selected != null) return selected
 

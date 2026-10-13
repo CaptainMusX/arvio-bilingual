@@ -48,6 +48,21 @@ fun SmartBilingualController(
     var unreliable by remember(stream) { mutableStateOf(emptySet<String>()) }
     var lastNoticeKey by remember(stream) { mutableStateOf<String?>(null) }
     var activeSecondaryId by remember(stream) { mutableStateOf<String?>(null) }
+    var appliedPlanKey by remember(stream) { mutableStateOf<String?>(null) }
+    val primaryOverride by BilingualPlayerBridge.primaryOverride.collectAsState()
+    val secondaryOverride by BilingualPlayerBridge.secondaryOverride.collectAsState()
+    // Manual track choices belong to one video.
+    LaunchedEffect(stream) {
+        BilingualPlayerBridge.primaryOverride.value = null
+        BilingualPlayerBridge.secondaryOverride.value = null
+        BilingualPlayerBridge.status.value = null
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            BilingualPlayerBridge.tracks.value = emptyList()
+            BilingualPlayerBridge.status.value = null
+        }
+    }
 
     // Menu request → resume (keeping a subtitle the user picked as the primary).
     var seenRequest by remember { mutableIntStateOf(uiState.smartBilingualRequestNonce) }
@@ -97,8 +112,13 @@ fun SmartBilingualController(
         onDispose { manager.onSecondaryLookup = null }
     }
 
-    LaunchedEffect(active, settings.primaryLanguage, settings.secondaryLanguage, uiState.subtitles, tapSignature, unreliable, stream) {
+    LaunchedEffect(
+        active, settings.generationMode, settings.primaryLanguage, settings.secondaryLanguage,
+        uiState.subtitles, tapSignature, unreliable, stream, primaryOverride, secondaryOverride,
+    ) {
         if (!active) {
+            appliedPlanKey = null
+            BilingualPlayerBridge.status.value = null
             if (latest.smartBilingualActive) viewModel.leaveSmartBilingual()
             return@LaunchedEffect
         }
@@ -106,6 +126,14 @@ fun SmartBilingualController(
         delay(500) // let track lists settle (embedded tracks and addon lists arrive in bursts)
         val state = latest
         val candidates = buildCandidates(state.subtitles, store)
+        BilingualPlayerBridge.tracks.value = candidates.filter { it.isText }.map { c ->
+            BilingualPlayerBridge.TrackChoice(
+                id = c.id,
+                label = listOfNotNull(c.language?.displayName, c.label?.takeIf { it.isNotBlank() && it != c.language?.displayName })
+                    .joinToString(" · ").ifBlank { c.id } + if (c.isEmbedded) "" else " (addon)",
+                mergeable = c.isEmbedded && c.tapTrackId != null,
+            )
+        }
         val plan = SmartBilingualPlanner.plan(
             SmartBilingualPlanner.Input(
                 candidates = candidates,
@@ -116,8 +144,29 @@ fun SmartBilingualController(
                 userPinnedSelection = pinUserSelection,
                 aiConfigured = viewModel.isAiTranslationConfigured(),
                 unreliableSecondaryIds = unreliable,
+                mode = settings.generationMode,
+                primaryOverrideId = primaryOverride,
+                secondaryOverrideId = secondaryOverride,
             )
         )
+        // Same plan as the one already on screen → nothing to do (no re-selection, no flicker,
+        // no re-translation).
+        val planKey = when (plan) {
+            is SmartPlan.MergeEmbedded -> "A:${plan.primary.id}:${plan.secondary.id}"
+            is SmartPlan.AiTranslate -> "B:${plan.primary.id}:${plan.target.tag}"
+            is SmartPlan.PrimaryOnly -> "P:${plan.primary.id}:${plan.why}"
+            is SmartPlan.Unavailable -> "U:${plan.why}"
+        }
+        if (planKey == appliedPlanKey && latest.smartBilingualActive &&
+            (plan !is SmartPlan.Unavailable) && latest.selectedSubtitle?.id == when (plan) {
+                is SmartPlan.MergeEmbedded -> plan.primary.id
+                is SmartPlan.AiTranslate -> plan.primary.id
+                is SmartPlan.PrimaryOnly -> plan.primary.id
+                else -> null
+            }
+        ) return@LaunchedEffect
+        appliedPlanKey = planKey
+        BilingualPlayerBridge.status.value = describe(plan, settings.generationMode)
         val byId = state.subtitles.associateBy { it.id }
         fun notice(kind: BilingualNotice.Kind, detail: String, key: String) {
             if (lastNoticeKey != key) {
@@ -193,5 +242,21 @@ internal fun buildCandidates(subtitles: List<Subtitle>, store: EmbeddedSubtitleS
             isForced = sub.isForced,
             tapTrackId = tap?.trackId,
         )
+    }
+}
+
+/** One line for the panel: what the bilingual layer is doing now. */
+internal fun describe(plan: SmartPlan, mode: BilingualGenerationMode): String {
+    val m = when (mode) {
+        BilingualGenerationMode.AUTO -> "Auto"
+        BilingualGenerationMode.MERGE -> "Merge"
+        BilingualGenerationMode.AI_TRANSLATE -> "AI Translate"
+    }
+    fun name(c: SubtitleCandidate) = c.language?.displayName ?: c.label ?: c.id
+    return when (plan) {
+        is SmartPlan.MergeEmbedded -> "$m · merging ${name(plan.primary)} + ${name(plan.secondary)} (no AI)"
+        is SmartPlan.AiTranslate -> "$m · ${name(plan.primary)} + AI ${plan.target.displayName}"
+        is SmartPlan.PrimaryOnly -> "$m · ${name(plan.primary)} only — ${BilingualNotice(plan.why).message()}"
+        is SmartPlan.Unavailable -> "$m · ${BilingualNotice(plan.why).message()}"
     }
 }

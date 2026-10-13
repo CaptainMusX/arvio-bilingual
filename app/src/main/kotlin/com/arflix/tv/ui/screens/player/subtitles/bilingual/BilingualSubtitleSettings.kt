@@ -25,6 +25,23 @@ enum class BilingualDisplayMode {
     val needsTranslation: Boolean get() = this == TRANSLATION_ONLY || this == BILINGUAL
 }
 
+/**
+ * HOW the second language is produced (independent of [BilingualDisplayMode], which decides what
+ * is SHOWN). Only used while the bilingual layer is on ([BilingualSubtitleSettings.smartEnabled]).
+ */
+@Serializable
+enum class BilingualGenerationMode {
+    /** Two embedded text tracks → merge (no AI); one missing → AI-translate the primary. Default. */
+    @SerialName("auto") AUTO,
+    /** Only ever merge existing tracks; never call AI, even when a language is missing. */
+    @SerialName("merge") MERGE,
+    /** Always AI-translate the chosen primary track, even when the target language exists. */
+    @SerialName("ai") AI_TRANSLATE;
+
+    val allowsAi: Boolean get() = this != MERGE
+    val allowsMerge: Boolean get() = this != AI_TRANSLATE
+}
+
 @Serializable
 enum class BilingualOrder {
     @SerialName("original_first") ORIGINAL_FIRST,
@@ -88,6 +105,8 @@ data class BilingualSubtitleSettings(
      * user turns on AI translation.
      */
     val smartEnabled: Boolean = false,
+    /** Auto / Merge / AI Translate — see [BilingualGenerationMode]. */
+    val generationMode: BilingualGenerationMode = BilingualGenerationMode.AUTO,
     /** "auto" or a BCP 47 tag (e.g. "en", "ja"). */
     val primaryLanguage: String = SubtitleLanguage.AUTO,
     /** BCP 47 tag of the second language, default Simplified Chinese. */

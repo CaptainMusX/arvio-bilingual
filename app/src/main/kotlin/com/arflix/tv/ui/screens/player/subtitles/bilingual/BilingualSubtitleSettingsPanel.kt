@@ -107,18 +107,64 @@ fun BilingualSubtitleSettingsPanel(
         if (showPreview) Preview(settings)
 
         // ── Smart bilingual (source selection) ──────────────────────────────
-        SectionTitle("Smart bilingual")
+        SectionTitle("Bilingual subtitles")
         ToggleLine(
-            label = "Pick the source automatically",
+            label = "Bilingual subtitles on",
             checked = settings.smartEnabled,
             onToggle = { on -> store.update { it.copy(smartEnabled = on) } }
         )
         Text(
-            "Two embedded text tracks in your languages are merged directly (no AI, no cost). " +
-                "If only the primary exists, it is translated with Gemini/Groq. A subtitle you pick yourself is always kept.",
+            "Shows two languages at once using the Generation mode below. Off = ARVIO's normal subtitles " +
+                "(a subtitle you pick from the normal list is always respected). Display mode further down is separate: it only decides which of the two lines are shown.",
             color = InkDim,
             fontSize = 11.sp
         )
+        SectionTitle("Generation mode")
+        ChipRow(
+            options = listOf(
+                BilingualGenerationMode.AUTO to "Auto",
+                BilingualGenerationMode.MERGE to "Merge",
+                BilingualGenerationMode.AI_TRANSLATE to "AI Translate",
+            ),
+            selected = settings.generationMode,
+            onSelect = { g ->
+                store.update { it.copy(generationMode = g) }
+                if (inPlayer && !settings.smartEnabled) BilingualPlayerBridge.requestSmartMode()
+            }
+        )
+        Text(
+            when (settings.generationMode) {
+                BilingualGenerationMode.AUTO -> "Auto: merge two existing text subtitles when they line up (no AI); otherwise translate the missing language with Gemini/Groq."
+                BilingualGenerationMode.MERGE -> "Merge: only combine existing subtitle tracks. AI is never called — if a language is missing you'll get a notice and can pick tracks below."
+                BilingualGenerationMode.AI_TRANSLATE -> "AI Translate: always translate the primary track with Gemini/Groq, even if the other language exists. On API errors the primary stays on screen."
+            },
+            color = InkDim,
+            fontSize = 11.sp
+        )
+        if (inPlayer) {
+            val status by BilingualPlayerBridge.status.collectAsState()
+            status?.let { Text(it, color = Accent, fontSize = 12.sp) }
+            val tracks by BilingualPlayerBridge.tracks.collectAsState()
+            val primaryOverride by BilingualPlayerBridge.primaryOverride.collectAsState()
+            val secondaryOverride by BilingualPlayerBridge.secondaryOverride.collectAsState()
+            if (tracks.isNotEmpty()) {
+                Text("Primary track (this video)", color = Ink, fontSize = 13.sp)
+                ChipRow(
+                    options = listOf<String?>(null).map { it to "Automatic" } + tracks.map { it.id to it.label },
+                    selected = primaryOverride,
+                    onSelect = { id -> BilingualPlayerBridge.primaryOverride.value = id; BilingualPlayerBridge.requestSmartMode() }
+                )
+                if (settings.generationMode != BilingualGenerationMode.AI_TRANSLATE) {
+                    Text("Secondary track to merge (this video)", color = Ink, fontSize = 13.sp)
+                    ChipRow(
+                        options = listOf<String?>(null).map { it to "Automatic" } +
+                            tracks.filter { it.mergeable }.map { it.id to it.label },
+                        selected = secondaryOverride,
+                        onSelect = { id -> BilingualPlayerBridge.secondaryOverride.value = id; BilingualPlayerBridge.requestSmartMode() }
+                    )
+                }
+            }
+        }
         if (inPlayer) {
             Row(
                 modifier = Modifier
@@ -129,7 +175,7 @@ fun BilingualSubtitleSettingsPanel(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Use Smart Bilingual for this video", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("Turn on bilingual for this video", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         Text("Primary subtitle language", color = Ink, fontSize = 13.sp)
@@ -479,4 +525,15 @@ private fun previewLine(lang: SubtitleLanguage): String = when {
 object BilingualPlayerBridge {
     val requests = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     fun requestSmartMode() { requests.tryEmit(Unit) }
+
+    /** A text subtitle track of the playing video the user can assign to a role. */
+    data class TrackChoice(val id: String, val label: String, val mergeable: Boolean)
+
+    /** Text tracks of the current video (published by the player; empty outside it). */
+    val tracks = kotlinx.coroutines.flow.MutableStateFlow<List<TrackChoice>>(emptyList())
+    /** Per-video manual track choices (null = automatic). Reset when the video changes. */
+    val primaryOverride = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val secondaryOverride = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    /** What the bilingual layer is doing right now (one line, for the panel). */
+    val status = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 }

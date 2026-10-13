@@ -26,7 +26,7 @@ class SubtitleTranslationManager(
         set(value) {
             if (field != value) {
                 field = value
-                bilingualBus.clear()
+                bilingualBus.resetSecondary()
             }
         }
     companion object {
@@ -66,7 +66,7 @@ class SubtitleTranslationManager(
     @Volatile
     var bilingualSource: BilingualSource = BilingualSource.AI_TRANSLATION
         set(value) {
-            if (field != value) bilingualBus.clear()
+            if (field != value) bilingualBus.resetSecondary()
             field = value
         }
 
@@ -74,7 +74,7 @@ class SubtitleTranslationManager(
     @Volatile
     var secondarySource: com.arflix.tv.ui.screens.player.subtitles.bilingual.DualTrackSecondarySource? = null
         set(value) {
-            if (field !== value) bilingualBus.clear()
+            if (field !== value) bilingualBus.resetSecondary()
             field = value
         }
 

@@ -62,6 +62,17 @@ translation (path B). `SubtitleTranslationManager.translationNeeded` is false on
 the publisher, the 2-minute lookahead nor the overlay can call the API. Translation cache and
 in-flight map are keyed by `targetLanguage + text`; changing `targetLanguage` clears the bus.
 
+## v3: generation modes (2026-10-13)
+
+`BilingualGenerationMode` {AUTO (default), MERGE, AI_TRANSLATE} is a separate setting from
+`BilingualDisplayMode`. The planner takes `mode` plus per-video manual `primaryOverrideId` /
+`secondaryOverrideId` (set from the in-player panel through `BilingualPlayerBridge`):
+MERGE never returns `AiTranslate` (missing/unreliable → `PrimaryOnly` with MERGE_* notice);
+AI_TRANSLATE always returns `AiTranslate` for the chosen primary (no key → `PrimaryOnly`
+AI_NOT_CONFIGURED). Path switches call `BilingualCueBus.resetSecondary()` instead of `clear()`:
+the primary line stays (no flicker) and pending second-language results are invalidated. The
+controller skips re-applying an identical plan (`appliedPlanKey`).
+
 ## Async / staleness model
 
 `BilingualCueBus` (thread-safe):

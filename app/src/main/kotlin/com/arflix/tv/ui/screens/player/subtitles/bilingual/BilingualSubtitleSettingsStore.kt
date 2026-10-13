@@ -86,6 +86,7 @@ class BilingualSubtitleSettingsStore(
         BilingualSubtitleSettings.DEFAULT.copy(
             mode = it.mode,
             smartEnabled = it.smartEnabled,
+            generationMode = it.generationMode,
             primaryLanguage = it.primaryLanguage,
             secondaryLanguage = it.secondaryLanguage,
         )

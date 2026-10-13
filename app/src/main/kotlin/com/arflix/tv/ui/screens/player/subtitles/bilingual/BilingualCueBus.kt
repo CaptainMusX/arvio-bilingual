@@ -70,6 +70,17 @@ class BilingualCueBus {
         _frame.value = null
     }
 
+    /**
+     * The SECOND language's source changed (generation mode, target language, secondary track):
+     * keep the primary line on screen (no flicker), drop its old second-language text and
+     * invalidate every pending result for it. Returns the new generation token.
+     */
+    fun resetSecondary(): Long = synchronized(lock) {
+        generation += 1
+        _frame.value = _frame.value?.copy(generation = generation, translation = null, translationFailed = false)
+        generation
+    }
+
     /** Current generation, for callers that want to check staleness themselves. */
     fun currentGeneration(): Long = synchronized(lock) { generation }
 }

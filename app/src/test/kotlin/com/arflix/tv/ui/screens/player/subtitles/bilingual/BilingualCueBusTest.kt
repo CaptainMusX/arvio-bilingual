@@ -79,4 +79,15 @@ class BilingualCueBusTest {
         assertEquals("line 199", frame.original)
         assertEquals("译文 199", frame.translation)
     }
+
+    @Test fun `resetSecondary keeps the primary and invalidates pending second-language results`() {
+        val bus = BilingualCueBus()
+        val token = bus.showCue("Hi", "Hi", cachedTranslation = "旧")
+        val newToken = bus.resetSecondary()
+        assertEquals("Hi", bus.frame.value!!.original)
+        assertEquals(null, bus.frame.value!!.translation)
+        assertEquals(false, bus.deliverTranslation(token, "Hi", "stale", failed = false))
+        assertEquals(true, bus.deliverTranslation(newToken, "Hi", "新", failed = false))
+        assertEquals("新", bus.frame.value!!.translation)
+    }
 }

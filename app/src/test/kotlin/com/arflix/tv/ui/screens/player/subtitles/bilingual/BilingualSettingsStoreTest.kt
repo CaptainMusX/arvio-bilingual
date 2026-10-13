@@ -30,6 +30,16 @@ class BilingualSettingsStoreTest {
 
         store1.update { it.copy(order = BilingualOrder.TRANSLATION_FIRST, gapDp = 20, bottomPercent = 15) }
         store1.update { it.copy(translation = it.translation.copy(colorHex = "#FFE600", offsetDp = 12)) }
+        // Generation mode, display mode and both languages are independent and all persist.
+        store1.update {
+            it.copy(
+                smartEnabled = true,
+                generationMode = BilingualGenerationMode.MERGE,
+                mode = BilingualDisplayMode.TRANSLATION_ONLY,
+                primaryLanguage = "ja",
+                secondaryLanguage = "zh-Hant",
+            )
+        }
         // Applied in memory immediately (live preview while dragging).
         assertEquals(20, store1.settings.value.gapDp)
         store1.flush()
@@ -47,6 +57,16 @@ class BilingualSettingsStoreTest {
         assertEquals("#FFE600", restored.translation.colorHex)
         assertEquals(12, restored.translation.offsetDp)
         assertEquals("#FFFFFF", restored.original.colorHex)
+        assertEquals(true, restored.smartEnabled)
+        assertEquals(BilingualGenerationMode.MERGE, restored.generationMode)
+        assertEquals(BilingualDisplayMode.TRANSLATION_ONLY, restored.mode)
+        assertEquals("ja", restored.primaryLanguage)
+        assertEquals("zh-Hant", restored.secondaryLanguage)
+        // Resetting the style keeps the generation/display modes and languages.
+        store2.resetToDefaults()
+        assertEquals(BilingualGenerationMode.MERGE, store2.settings.value.generationMode)
+        assertEquals("ja", store2.settings.value.primaryLanguage)
+        assertEquals(BilingualSubtitleSettings.DEFAULT.translation, store2.settings.value.translation)
 
         // Another profile has its own (default) settings.
         val store3 = BilingualSubtitleSettingsStore(ds2, MutableStateFlow("p2"), scope2)

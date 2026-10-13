@@ -28,8 +28,8 @@
 
 ## 智能双语字幕（两条路径）
 
-在播放器字幕菜单 → **Bilingual Subtitles**（或 设置 → Audio & Subtitles）中打开 **Smart bilingual → Pick the source automatically**，
-或者只对当前视频点 **Use Smart Bilingual for this video**。默认关闭：不开启时 ARVIO 的普通字幕与原有 AI 字幕行为完全不变。
+在播放器字幕菜单 → **Bilingual Subtitles**（或 设置 → Audio & Subtitles）中打开 **Bilingual subtitles on**，
+或者只对当前视频点 **Turn on bilingual for this video**。默认关闭：不开启时 ARVIO 的普通字幕与原有 AI 字幕行为完全不变。
 
 ```
 视频内的文本字幕轨道（SRT / ASS / WebVTT / TX3G…）
@@ -57,6 +57,18 @@
 - **尊重手动选择**：在字幕菜单里手动选了某条字幕或关闭字幕，智能模式对当前视频自动让位；
   之后再点 “Use Smart Bilingual for this video”，你选的那条会作为主语言保留。
 - 每次切换都会在画面顶部短暂提示当前用的是哪条路径（例如 “merging embedded English + Chinese (Simplified) subtitles (no AI)”）。
+
+### 三种字幕生成模式（Generation Mode）
+
+在 **设置 → Audio & Subtitles → Bilingual Subtitles** 中配置，也可以在播放器 **Subtitles → Bilingual Subtitles** 面板中随时切换，立即生效并持久化保存。
+
+| 模式 | 行为 |
+|---|---|
+| **Auto**（默认） | 两种语言的文本字幕都存在且同步可靠 → 直接合并（不调用 AI）；缺少一种 → 用 Gemini/Groq 补全。切换路径时主语言字幕保持在屏幕上，旧结果按代号丢弃，不重复翻译 |
+| **Merge**（强制合并） | 只使用现有两条字幕轨道，**绝不调用 AI**；缺少语言或无法可靠对齐时显示明确提示，可在面板里手动指定“主轨 / 辅轨” |
+| **AI Translate**（强制 AI） | 无论是否已有目标语言字幕，都用你指定的原语言文本轨（主语言设置或手动指定的主轨）调用 Gemini/Groq，原文与译文同显；API 失败时保留原文；未配置 Key 时提示 |
+
+**Generation Mode 与 Display Mode 是两个独立设置**：前者决定第二语言“从哪来”，后者（Bilingual / Primary only / Secondary only / Off）只决定“显示哪几行”。
 
 ### 语言可自由配置
 

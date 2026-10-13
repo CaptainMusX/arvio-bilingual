@@ -41,16 +41,15 @@ fun BilingualSettingsEntry() {
     val settings by store.settings.collectAsState()
     var open by rememberSaveable { mutableStateOf(false) }
 
-    MobileSettingsCategory(title = "BILINGUAL AI SUBTITLES") {
+    MobileSettingsCategory(title = "BILINGUAL SUBTITLES") {
         MobileSettingsRow(
             icon = Icons.Default.Subtitles,
-            title = "Bilingual AI Subtitles",
-            subtitle = "English + Chinese from AI Translation: mode, colors, sizes, order, gap, position",
-            value = when (settings.mode) {
-                BilingualDisplayMode.BILINGUAL -> "Bilingual"
-                BilingualDisplayMode.ORIGINAL_ONLY -> "Original only"
-                BilingualDisplayMode.TRANSLATION_ONLY -> "Translation only"
-                BilingualDisplayMode.OFF -> "Hidden"
+            title = "Bilingual Subtitles",
+            subtitle = "Generation mode (Auto / Merge / AI Translate), languages, display mode, styles",
+            value = if (!settings.smartEnabled) "Off" else when (settings.generationMode) {
+                BilingualGenerationMode.AUTO -> "Auto"
+                BilingualGenerationMode.MERGE -> "Merge"
+                BilingualGenerationMode.AI_TRANSLATE -> "AI Translate"
             },
             isToggle = false,
             showDivider = false,
@@ -77,7 +76,7 @@ fun BilingualSettingsEntry() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Bilingual AI Subtitles",
+                            "Bilingual Subtitles",
                             color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,

@@ -155,7 +155,9 @@ class SmartBilingualFlowTest {
         publisher.publish("Good night.", 0)
         delay(300) // request for Simplified Chinese is now in flight
         manager.targetLanguage = "Japanese"            // user switches the secondary language
-        assertNull(manager.bilingualBus.frame.value)  // stale frame invalidated
+        // No flicker: the primary line stays, its old-language translation slot is invalidated.
+        assertEquals("Good night.", manager.bilingualBus.frame.value!!.original)
+        assertNull(manager.bilingualBus.frame.value!!.translation)
         publisher.publish("Good night.", 0)
         gate.complete(Unit)                            // the old-language answer arrives late
         withTimeout(5_000) { while (manager.bilingualBus.frame.value?.translation == null) delay(20) }
@@ -219,5 +221,43 @@ class SmartBilingualFlowTest {
         delay(200)
         coVerify(exactly = 0) { service.translateBatch(any(), any()) }
         assertTrue(!manager.translationNeeded)
+    }
+
+    @Test fun `switching generation path keeps the primary line on screen and drops stale results`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val service = mockk<SubtitleTranslationService>()
+        coEvery { service.translateBatch(any(), any()) } coAnswers {
+            gate.await(); TranslationResult(firstArg<List<String>>().map { "译:$it" }, true)
+        }
+        val manager = SubtitleTranslationManager(service, "Simplified Chinese", scope).apply { isEnabled = true }
+        val publisher = BilingualCuePublisher(manager, scope)
+        publisher.publish("EN line 1", spanOf(1).first * 1000)       // Auto → AI (path B) in flight
+        delay(200)
+        // Auto re-plans to path A (the Chinese track became readable) — or the user picks Merge.
+        manager.bilingualSource = SubtitleTranslationManager.BilingualSource.EMBEDDED_TRACK
+        manager.secondarySource = DualTrackSecondarySource(storeWithEnglishAndChinese(), 3, 4)
+        val mid = manager.bilingualBus.frame.value!!
+        assertEquals("EN line 1", mid.original)                    // no blank frame
+        gate.complete(Unit)
+        delay(300)
+        assertNull(manager.bilingualBus.frame.value!!.translation)  // AI result for the old path dropped
+        publisher.publish("EN line 2", spanOf(2).first * 1000)
+        assertEquals("中文 2", manager.bilingualBus.frame.value!!.translation)
+        coVerify(exactly = 1) { service.translateBatch(any(), any()) } // no second request
+    }
+
+    @Test fun `AI Translate mode ignores an existing Chinese track and translates`() = runBlocking {
+        val service = countingService()
+        val en = SubtitleCandidate("3", "eng", "English", true, false, false, 3)
+        val zh = SubtitleCandidate("4", "chi", "简体", true, false, false, 4)
+        val plan = SmartBilingualPlanner.plan(
+            SmartBilingualPlanner.Input(listOf(en, zh), "en", SubtitleLanguage.SIMPLIFIED_CHINESE, "en", null, false, true,
+                mode = BilingualGenerationMode.AI_TRANSLATE)
+        ) as SmartPlan.AiTranslate
+        val manager = SubtitleTranslationManager(service, plan.target.translationTargetName, scope).apply { isEnabled = true }
+        BilingualCuePublisher(manager, scope).publish("EN line 1", 0)
+        withTimeout(5_000) { while (manager.bilingualBus.frame.value?.translation == null) delay(20) }
+        assertEquals("[Simplified Chinese]EN line 1", manager.bilingualBus.frame.value!!.translation)
+        assertEquals("EN line 1", manager.bilingualBus.frame.value!!.original)
     }
 }

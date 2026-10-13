@@ -25,7 +25,10 @@ class SmartBilingualPlannerTest {
         pinned: Boolean = false,
         ai: Boolean = true,
         unreliable: Set<String> = emptySet(),
-    ) = SmartBilingualPlanner.Input(c.toList(), primary, secondary, audio, selected, pinned, ai, unreliable)
+        mode: BilingualGenerationMode = BilingualGenerationMode.AUTO,
+        primaryOverride: String? = null,
+        secondaryOverride: String? = null,
+    ) = SmartBilingualPlanner.Input(c.toList(), primary, secondary, audio, selected, pinned, ai, unreliable, mode, primaryOverride, secondaryOverride)
 
     @Test fun `English and Simplified Chinese embedded - merge without AI`() {
         val plan = SmartBilingualPlanner.plan(input(en, zhHans, ai = true))
@@ -116,5 +119,74 @@ class SmartBilingualPlannerTest {
     @Test fun `no text subtitle at all`() {
         val plan = SmartBilingualPlanner.plan(input(zhPgs, ai = true))
         assertEquals(BilingualNotice.Kind.NO_TEXT_SUBTITLE, (plan as SmartPlan.Unavailable).why)
+    }
+
+    // ── Generation modes ─────────────────────────────────────────────────────
+
+    @Test fun `Auto is the default mode`() {
+        assertEquals(BilingualGenerationMode.AUTO, BilingualSubtitleSettings().generationMode)
+        assertEquals(BilingualGenerationMode.AUTO, SmartBilingualPlanner.Input(emptyList(), "auto", SubtitleLanguage.SIMPLIFIED_CHINESE, null, null, false, true).mode)
+    }
+
+    @Test fun `Merge mode merges when both tracks exist`() {
+        val plan = SmartBilingualPlanner.plan(input(en, zhHans, mode = BilingualGenerationMode.MERGE))
+        assertEquals("5", (plan as SmartPlan.MergeEmbedded).secondary.id)
+    }
+
+    @Test fun `Merge mode never uses AI - missing language gives a notice even with a key`() {
+        val plan = SmartBilingualPlanner.plan(input(en, ai = true, mode = BilingualGenerationMode.MERGE))
+        assertEquals(BilingualNotice.Kind.MERGE_NO_SECONDARY, (plan as SmartPlan.PrimaryOnly).why)
+        val unreliablePlan = SmartBilingualPlanner.plan(input(en, zhHans, ai = true, unreliable = setOf("5"), mode = BilingualGenerationMode.MERGE))
+        assertEquals(BilingualNotice.Kind.MERGE_UNRELIABLE, (unreliablePlan as SmartPlan.PrimaryOnly).why)
+        // Image-only secondary: still no AI in Merge mode.
+        assertTrue(SmartBilingualPlanner.plan(input(en, zhPgs, mode = BilingualGenerationMode.MERGE)) is SmartPlan.PrimaryOnly)
+    }
+
+    @Test fun `Merge mode lets the user pick both tracks by hand`() {
+        // e.g. a track labelled only "Chinese" plus a non-default English one.
+        val plan = SmartBilingualPlanner.plan(
+            input(en, enSdh, zhPlain, zhHant, mode = BilingualGenerationMode.MERGE, primaryOverride = "4", secondaryOverride = "6")
+        ) as SmartPlan.MergeEmbedded
+        assertEquals("4" to "6", plan.primary.id to plan.secondary.id)
+    }
+
+    @Test fun `AI Translate mode translates even when the target track exists`() {
+        val plan = SmartBilingualPlanner.plan(input(en, zhHans, mode = BilingualGenerationMode.AI_TRANSLATE))
+        plan as SmartPlan.AiTranslate
+        assertEquals("3", plan.primary.id)
+        assertEquals(BilingualNotice.Kind.AI_FORCED, plan.why)
+    }
+
+    @Test fun `AI Translate mode uses the user's source language or track`() {
+        val byLang = SmartBilingualPlanner.plan(input(en, ja, zhHans, primary = "ja", mode = BilingualGenerationMode.AI_TRANSLATE)) as SmartPlan.AiTranslate
+        assertEquals("9", byLang.primary.id)
+        val byTrack = SmartBilingualPlanner.plan(input(en, enSdh, zhHans, primaryOverride = "4", mode = BilingualGenerationMode.AI_TRANSLATE)) as SmartPlan.AiTranslate
+        assertEquals("4", byTrack.primary.id)
+    }
+
+    @Test fun `AI Translate mode without a key keeps the primary and says why`() {
+        val plan = SmartBilingualPlanner.plan(input(en, zhHans, ai = false, mode = BilingualGenerationMode.AI_TRANSLATE))
+        assertEquals(BilingualNotice.Kind.AI_NOT_CONFIGURED, (plan as SmartPlan.PrimaryOnly).why)
+    }
+
+    @Test fun `switching modes on the same video changes the plan immediately`() {
+        val tracks = arrayOf(en, zhHans)
+        assertTrue(SmartBilingualPlanner.plan(input(*tracks, mode = BilingualGenerationMode.AUTO)) is SmartPlan.MergeEmbedded)
+        assertTrue(SmartBilingualPlanner.plan(input(*tracks, mode = BilingualGenerationMode.AI_TRANSLATE)) is SmartPlan.AiTranslate)
+        assertTrue(SmartBilingualPlanner.plan(input(*tracks, mode = BilingualGenerationMode.MERGE)) is SmartPlan.MergeEmbedded)
+        // Only English: Auto falls back to AI, Merge does not.
+        assertTrue(SmartBilingualPlanner.plan(input(en, mode = BilingualGenerationMode.AUTO)) is SmartPlan.AiTranslate)
+        assertTrue(SmartBilingualPlanner.plan(input(en, mode = BilingualGenerationMode.MERGE)) is SmartPlan.PrimaryOnly)
+    }
+
+    @Test fun `generation mode and display mode are independent settings`() {
+        val s = BilingualSubtitleSettings(generationMode = BilingualGenerationMode.MERGE, mode = BilingualDisplayMode.ORIGINAL_ONLY)
+        val back = BilingualSettingsCodec.decode(BilingualSettingsCodec.encode(s))
+        assertEquals(BilingualGenerationMode.MERGE, back.generationMode)
+        assertEquals(BilingualDisplayMode.ORIGINAL_ONLY, back.mode)
+        val changed = back.copy(generationMode = BilingualGenerationMode.AI_TRANSLATE)
+        assertEquals(BilingualDisplayMode.ORIGINAL_ONLY, changed.mode)
+        // Old settings files (no generationMode key) load as Auto.
+        assertEquals(BilingualGenerationMode.AUTO, BilingualSettingsCodec.decode("{\"mode\":\"bilingual\"}").generationMode)
     }
 }
