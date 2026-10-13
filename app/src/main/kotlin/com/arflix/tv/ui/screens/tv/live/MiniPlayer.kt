@@ -58,7 +58,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import com.arflix.tv.R
 import com.arflix.tv.data.model.IptvNowNext
 import com.arflix.tv.data.model.IptvProgram

@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Icon
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import com.arflix.tv.ui.focus.arvioDpadFocusGroup
 import com.arflix.tv.ui.skin.resolveAccentColor
 import com.arflix.tv.ui.theme.ArflixTypography

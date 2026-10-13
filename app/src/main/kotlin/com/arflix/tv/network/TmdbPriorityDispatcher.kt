@@ -14,7 +14,7 @@ import javax.inject.Singleton
  * budget is shared across screens — per-ViewModel semaphores would be invisible to
  * each other while both contend on OkHttp's single per-host connection pool.
  *
- * Budgets (IMMEDIATE 3 + DEFERRED 2 + BACKGROUND 1 = 6 operations):
+ * Budgets (ARVIO Bilingual: IMMEDIATE 4 + DEFERRED 4 + BACKGROUND 2 = 10 operations; upstream 3+2+1):
  * These gate repository operations, not individual HTTP calls. An operation may
  * use cache, call another service, or issue multiple requests; OkHttp still owns
  * its per-host request limits.
@@ -44,9 +44,9 @@ class TmdbPriorityDispatcher @Inject constructor() {
         BACKGROUND,
     }
 
-    private val immediateSlots = Semaphore(permits = 3)
-    private val deferredSlots = Semaphore(permits = 2)
-    private val backgroundSlots = Semaphore(permits = 1)
+    private val immediateSlots = Semaphore(permits = 4)
+    private val deferredSlots = Semaphore(permits = 4)
+    private val backgroundSlots = Semaphore(permits = 2)
 
     suspend fun <T> withPermit(priority: Priority, block: suspend () -> T): T {
         return when (priority) {

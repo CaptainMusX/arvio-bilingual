@@ -111,7 +111,7 @@ import java.util.concurrent.TimeUnit
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision

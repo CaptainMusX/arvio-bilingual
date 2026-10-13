@@ -13,17 +13,17 @@ object BilingualStrings {
 
     fun get(en: String, locale: Locale = Locale.getDefault()): String {
         if (locale.language != "zh") return en
-        val p = T[en] ?: return en
+        val p = T[en] ?: return com.arflix.tv.util.UiI18n.t(en)
         return if (isTraditional(locale)) p.second else p.first
     }
 
     private val T: Map<String, Pair<String, String>> = mapOf(
         "AI Translate" to Pair("AI 翻译", "AI 翻譯"),
-        "AI Translate: always translate the primary track with Gemini/Groq, even if the other language exists. On API errors the primary stays on screen." to Pair("AI 翻译：无论另一种语言字幕是否存在，都用 Gemini/Groq 翻译主字幕轨；API 出错时保留主字幕。", "AI 翻譯：無論另一種語言字幕是否存在，都用 Gemini/Groq 翻譯主字幕軌；API 出錯時保留主字幕。"),
+        "AI Translate: always translate the primary track with Gemini/Groq, even if the other language exists. On API errors the primary stays on screen." to Pair("AI 翻译：无论另一种语言字幕是否存在，都用 AI（Gemini/Groq 或自定义模型） 翻译主字幕轨；API 出错时保留主字幕。", "AI 翻譯：無論另一種語言字幕是否存在，都用 AI（Gemini/Groq 或自定义模型） 翻譯主字幕軌；API 出錯時保留主字幕。"),
         "Advanced settings" to Pair("高级设置", "高階設定"),
         "Applies to the bilingual layer (Smart Bilingual or AI Translation). Normal subtitle tracks keep ARVIO's own subtitle style. ARVIO's own \"Secondary subtitle language\" (subtitle search filter) is a different setting." to Pair("仅作用于双语字幕层。普通字幕轨仍使用 ARVIO 自带的字幕样式。ARVIO 自带的“次要字幕语言”（字幕搜索筛选）是另一个设置。", "僅作用於雙語字幕層。普通字幕軌仍使用 ARVIO 自帶的字幕樣式。ARVIO 自帶的“次要字幕語言”（字幕搜尋篩選）是另一個設定。"),
         "Auto" to Pair("自动", "自動"),
-        "Auto: merge two existing text subtitles when they line up (no AI); otherwise translate the missing language with Gemini/Groq." to Pair("自动：两条现有文本字幕对齐可靠时直接合并（不调用 AI）；否则用 Gemini/Groq 翻译补全缺少的语言。", "自動：兩條現有文字字幕對齊可靠時直接合並（不呼叫 AI）；否則用 Gemini/Groq 翻譯補全缺少的語言。"),
+        "Auto: merge two existing text subtitles when they line up (no AI); otherwise translate the missing language with Gemini/Groq." to Pair("自动：两条现有文本字幕对齐可靠时直接合并（不调用 AI）；否则用 AI（Gemini/Groq 或自定义模型） 翻译补全缺少的语言。", "自動：兩條現有文字字幕對齊可靠時直接合並（不呼叫 AI）；否則用 AI（Gemini/Groq 或自定义模型） 翻譯補全缺少的語言。"),
         "Automatic" to Pair("自动", "自動"),
         "BILINGUAL SUBTITLES" to Pair("双语字幕", "雙語字幕"),
         "Background box" to Pair("背景框", "背景框"),

@@ -54,7 +54,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import com.arflix.tv.ui.theme.ArflixTypography
 import com.arflix.tv.ui.theme.BackgroundCard
 import com.arflix.tv.ui.theme.BackgroundElevated

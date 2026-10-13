@@ -155,7 +155,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import coil.compose.AsyncImage
 import com.arflix.tv.ArflixApplication
 import com.arflix.tv.network.OkHttpProvider
@@ -418,17 +418,17 @@ fun PlayerScreen(
         !preferExtensionDecoder
     }
 
-    // Remember the exact orientation state from before entering the player
-    val previousOrientation = remember(activity) {
-        activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+    // Keep playback in landscape while the player is visible, regardless of the device's
+    // auto-rotate lock. The pre-player orientation is owned by PlayerOrientationLock so that an
+    // auto-played next episode (a new PlayerScreen overlapping the old one) neither flips to
+    // portrait nor leaves the app stuck in landscape after exit.
+    val orientationLease = remember(activity) {
+        com.arflix.tv.ui.screens.player.orientation.PlayerOrientationLock.acquire(activity)
     }
-
-    // Keep playback in landscape while the player is visible, regardless of the
-    // device's auto-rotate lock. Restore the app's prior orientation afterward.
-    DisposableEffect(activity) {
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    DisposableEffect(activity, orientationLease) {
+        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         onDispose {
-            activity?.requestedOrientation = previousOrientation
+            com.arflix.tv.ui.screens.player.orientation.PlayerOrientationLock.release(activity, orientationLease)
         }
     }
 
@@ -1894,7 +1894,9 @@ fun PlayerScreen(
         animateExit = deviceType.isTouchDevice(),
         pause = { if (!playerReleased) exoPlayer.pause() },
         leave = {
-            activity?.requestedOrientation = previousOrientation
+            com.arflix.tv.ui.screens.player.orientation.PlayerOrientationLock.release(
+                activity, orientationLease, immediate = true
+            )
             onBack()
         }
     )
@@ -3548,7 +3550,7 @@ fun PlayerScreen(
                                     if (matchGroup && subtitleTrackIndex == 0) {
                                         viewModel.runFindBestMatch()
                                     } else if (aiGroup && subtitleTrackIndex == aiHeaderIdx) {
-                                        if (!latestUiState.isAiTranslating) viewModel.activateAiTranslation()
+                                        if (!latestUiState.isAiTranslating) viewModel.activateAiTranslation(userInitiated = true)
                                     } else {
                                         group?.second?.getOrNull(realIdx)?.second
                                             ?.let { viewModel.selectSubtitle(it) }
@@ -4089,7 +4091,7 @@ fun PlayerScreen(
                     viewModel.runFindBestMatch()
                 },
                 onActivateAiTranslation = {
-                    viewModel.activateAiTranslation()
+                    viewModel.toggleAiTranslation()
                 },
                 subtitleDelayMs = subtitleSyncOffsetMs,
                 onUpdateSubtitleDelay = { delayMs ->
@@ -4225,7 +4227,7 @@ fun PlayerScreen(
                                     modifier = Modifier.padding(bottom = if (endsAtTime.value.isNotBlank() || !isTouchDevice) 4.dp else 0.dp)
                                 ) {
                                     if (castDeviceName != null) {
-                                        androidx.tv.material3.Text(
+                                        com.arflix.tv.ui.i18n.TvText(
                                             text = castDeviceName,
                                             style = ArflixTypography.caption.copy(fontSize = 11.sp),
                                             color = Color.White.copy(alpha = 0.85f),
@@ -4754,7 +4756,7 @@ fun PlayerScreen(
                     },
                     isLiveAudioTranslating = uiState.isLiveAudioTranslating,
                     isFindingBestMatch = uiState.isFindingBestMatch,
-                    onToggleAi = { viewModel.activateAiTranslation() },
+                    onToggleAi = { viewModel.toggleAiTranslation() },
                     onToggleLiveAudio = { viewModel.toggleLiveAudioTranslation() },
                     onFindBestMatch = { viewModel.runFindBestMatch() },
                     onClose = {

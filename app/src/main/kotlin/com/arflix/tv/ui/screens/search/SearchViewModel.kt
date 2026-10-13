@@ -206,7 +206,23 @@ class SearchViewModel @Inject constructor(
     private fun loadDiscoverRows() {
         discoverJob?.cancel()
         val state = _uiState.value
-        _uiState.value = state.copy(isDiscoverLoading = true)
+        // ARVIO Bilingual: browse rows are cached per (type, genres, language). A cached set is
+        // shown at once (no full-screen spinner on every visit) and only refreshed when stale.
+        val cacheKey = DiscoverRowCache.key(state.selectedType.name, genresParam(state.selectedGenres, state.matchAllGenres), mediaRepository.contentLanguage)
+        val cached = DiscoverRowCache.get(cacheKey)
+        if (cached != null) {
+            cached.rows.forEach { cat -> cat.items.forEach { mediaRepository.cacheItem(it) } }
+            _uiState.value = state.copy(discoverCategories = cached.rows, isDiscoverLoading = false)
+            viewModelScope.launch {
+                val isWatched = watchedMatcher()
+                _uiState.update { cur ->
+                    if (cur.discoverCategories === cached.rows) cur.copy(discoverCategories = markWatched(cached.rows, isWatched)) else cur
+                }
+            }
+            if (!cached.isStale) return
+        } else {
+            _uiState.value = state.copy(isDiscoverLoading = true)
+        }
 
         discoverJob = viewModelScope.launch {
             try {
@@ -233,24 +249,40 @@ class SearchViewModel @Inject constructor(
                     releaseDateGte = from, releaseDateLte = today
                 )
 
+                val titles = listOf("Trending", "Popular This Year", "Top Rated", "New Releases", "Hidden Gems")
+                val requests = listOf(
+                    row("popularity.desc", 50),
+                    row("popularity.desc", 20, from = oneYearAgo),
+                    row("vote_average.desc", 1000),
+                    row("popularity.desc", 10, from = threeMonthsAgo),
+                    row("vote_average.desc", 200, page = 2),
+                )
+                // Rows are fetched in parallel and published as soon as each one lands (in row
+                // order), instead of waiting for the slowest of the five requests.
+                val slots = arrayOfNulls<Category>(titles.size)
+                val done = BooleanArray(titles.size)
                 val categories = withContext(Dispatchers.IO) {
                     coroutineScope {
-                        // Row titles stay English: they are part of the Category id used
-                        // as the row's focus key. SearchScreen localizes them for display
-                        // only (localizedDiscoverRowTitle).
-                        // Row 1: Trending - popular with minimum votes to filter garbage
-                        val row1 = async { buildRow("Trending", row("popularity.desc", 50)) }
-                        // Row 2: Popular This Year - recent + popular, no obscure stuff
-                        val row2 = async { buildRow("Popular This Year", row("popularity.desc", 20, from = oneYearAgo)) }
-                        // Row 3: Top Rated - high quality, well-known titles
-                        val row3 = async { buildRow("Top Rated", row("vote_average.desc", 1000)) }
-                        // Row 4: New Releases - last 90 days ONLY, must be actually released (date <= today)
-                        val row4 = async { buildRow("New Releases", row("popularity.desc", 10, from = threeMonthsAgo)) }
-                        // Row 5: Hidden Gems - good ratings but less mainstream
-                        val row5 = async { buildRow("Hidden Gems", row("vote_average.desc", 200, page = 2)) }
-                        listOfNotNull(row1.await(), row2.await(), row3.await(), row4.await(), row5.await())
+                        titles.indices.map { i ->
+                            async {
+                                val built = buildRow(titles[i], requests[i])
+                                synchronized(slots) {
+                                    slots[i] = built
+                                    done[i] = true
+                                }
+                                if (cached == null) {
+                                    val partial = synchronized(slots) { slots.filterNotNull() }
+                                    if (partial.isNotEmpty()) {
+                                        partial.forEach { cat -> cat.items.forEach { mediaRepository.cacheItem(it) } }
+                                        _uiState.update { it.copy(discoverCategories = partial, isDiscoverLoading = done.any { d -> !d }) }
+                                    }
+                                }
+                            }
+                        }.awaitAll()
+                        slots.filterNotNull()
                     }
                 }
+                if (categories.isNotEmpty()) DiscoverRowCache.put(cacheKey, categories)
                 categories.forEach { cat -> cat.items.forEach { mediaRepository.cacheItem(it) } }
                 val isWatched = watchedMatcher()
                 _uiState.value = _uiState.value.copy(discoverCategories = markWatched(categories, isWatched), isDiscoverLoading = false)
@@ -278,6 +310,22 @@ class SearchViewModel @Inject constructor(
             catch (_: Exception) {
                 _uiState.value = _uiState.value.copy(isDiscoverLoading = false)
             }
+        }
+    }
+
+    /** Process-wide cache of the browse rows (survives leaving and re-opening Search). */
+    private object DiscoverRowCache {
+        private const val STALE_AFTER_MS = 10 * 60_000L
+        private const val MAX_AGE_MS = 6 * 60 * 60_000L
+        class Entry(val rows: List<Category>, val at: Long) {
+            val isStale: Boolean get() = System.currentTimeMillis() - at > STALE_AFTER_MS
+        }
+        private val map = java.util.concurrent.ConcurrentHashMap<String, Entry>()
+        fun key(type: String, genres: String?, language: String) = "$type|${genres.orEmpty()}|$language"
+        fun get(key: String): Entry? = map[key]?.takeIf { System.currentTimeMillis() - it.at < MAX_AGE_MS }
+        fun put(key: String, rows: List<Category>) {
+            if (map.size > 24) map.clear()
+            map[key] = Entry(rows, System.currentTimeMillis())
         }
     }
 

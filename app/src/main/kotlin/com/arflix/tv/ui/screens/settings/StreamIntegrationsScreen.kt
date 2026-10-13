@@ -38,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import com.arflix.tv.R
 import com.arflix.tv.data.model.StreamIntegrationConfig
 import com.arflix.tv.data.model.StreamIntegrationType

@@ -214,7 +214,7 @@ import com.arflix.tv.ui.components.localizeSettingValue
 import androidx.core.widget.doAfterTextChanged
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import com.arflix.tv.data.model.CatalogConfig
 import com.arflix.tv.data.model.CatalogDiscoveryResult
 import com.arflix.tv.data.model.CatalogKind
@@ -9245,7 +9245,7 @@ private fun CatalogDiscoveryTextInputDialog(
             androidx.compose.material3.TextField(
                 value = value,
                 onValueChange = { value = it },
-                placeholder = { androidx.compose.material3.Text(placeholder) },
+                placeholder = { com.arflix.tv.ui.i18n.M3Text(placeholder) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = androidx.compose.material3.TextFieldDefaults.colors(

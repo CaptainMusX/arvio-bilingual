@@ -280,6 +280,13 @@ object OkHttpProvider {
             .connectionPool(appConnectionPool)
             .dns(dns)
             .retryOnConnectionFailure(true)
+            // ARVIO Bilingual: OkHttp's default allows only 5 concurrent calls per host, and every
+            // Home/Search row, logo and detail call goes to api.themoviedb.org — on a slow or
+            // far-away link (e.g. through a VPN) rows queued behind each other for seconds.
+            .dispatcher(okhttp3.Dispatcher().apply {
+                maxRequests = 64
+                maxRequestsPerHost = 12
+            })
 
         if (BuildConfig.DEBUG) {
             builder.addInterceptor(apiDnsLoggingInterceptor)

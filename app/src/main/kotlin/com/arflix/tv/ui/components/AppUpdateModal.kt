@@ -213,7 +213,7 @@ fun AppUpdateModal(
                         }
                     }
             ) {
-                androidx.compose.material3.Text(
+                com.arflix.tv.ui.i18n.M3Text(
                     text = stringResource(R.string.app_update),
                     style = ArflixTypography.sectionTitle,
                     color = TextPrimary
@@ -230,18 +230,18 @@ fun AppUpdateModal(
                     is UpdateStatus.Success -> stringResource(R.string.update_msg_uptodate)
                     is UpdateStatus.Idle -> stringResource(R.string.update_msg_no_info)
                 }
-                androidx.compose.material3.Text(subtitle, style = ArflixTypography.body, color = TextSecondary)
+                com.arflix.tv.ui.i18n.M3Text(subtitle, style = ArflixTypography.body, color = TextSecondary)
 
                 if (status is UpdateStatus.UpdateAvailable) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    androidx.compose.material3.Text(
+                    com.arflix.tv.ui.i18n.M3Text(
                         text = stringResource(R.string.update_msg_current_to_latest, BuildConfig.VERSION_NAME, status.update.tag),
                         style = ArflixTypography.caption,
                         color = TextSecondary.copy(alpha = 0.78f)
                     )
                 } else if (status is UpdateStatus.Success) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    androidx.compose.material3.Text(
+                    com.arflix.tv.ui.i18n.M3Text(
                         text = stringResource(R.string.update_msg_current_uptodate, BuildConfig.VERSION_NAME),
                         style = ArflixTypography.caption,
                         color = TextSecondary.copy(alpha = 0.78f)
@@ -251,7 +251,7 @@ fun AppUpdateModal(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (status is UpdateStatus.Failure) {
-                    androidx.compose.material3.Text(status.message, style = ArflixTypography.body, color = Pink)
+                    com.arflix.tv.ui.i18n.M3Text(status.message, style = ArflixTypography.body, color = Pink)
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
@@ -264,22 +264,22 @@ fun AppUpdateModal(
                             trackColor = Color.White.copy(alpha = 0.08f)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        androidx.compose.material3.Text(
+                        com.arflix.tv.ui.i18n.M3Text(
                             text = status.progress?.let { "${(it * 100).toInt()}%" } ?: stringResource(R.string.update_msg_preparing),
                             style = ArflixTypography.caption,
                             color = TextSecondary
                         )
                     }
                     is UpdateStatus.ReadyToInstall -> {
-                        androidx.compose.material3.Text(stringResource(R.string.update_msg_ready), style = ArflixTypography.body, color = TextPrimary)
+                        com.arflix.tv.ui.i18n.M3Text(stringResource(R.string.update_msg_ready), style = ArflixTypography.body, color = TextPrimary)
                     }
                     is UpdateStatus.Installing -> {
-                        androidx.compose.material3.Text(stringResource(R.string.update_msg_installer_hint), style = ArflixTypography.body, color = TextPrimary)
+                        com.arflix.tv.ui.i18n.M3Text(stringResource(R.string.update_msg_installer_hint), style = ArflixTypography.body, color = TextPrimary)
                     }
                     is UpdateStatus.UpdateAvailable -> {
                         if (showNotes) {
                             // Only the notes scroll; title and buttons stay on screen on short displays.
-                            androidx.compose.material3.Text(
+                            com.arflix.tv.ui.i18n.M3Text(
                                 text = status.update.notes.take(MAX_UPDATE_NOTES_CHARS),
                                 style = ArflixTypography.caption.copy(lineHeight = 18.sp),
                                 color = TextSecondary,
@@ -399,7 +399,7 @@ private fun UpdateActionButton(
             .padding(horizontal = 20.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        androidx.compose.material3.Text(
+        com.arflix.tv.ui.i18n.M3Text(
             text = label,
             color = textColor,
             style = ArflixTypography.button,

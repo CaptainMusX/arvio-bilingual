@@ -105,7 +105,7 @@ import androidx.tv.foundation.lazy.list.TvLazyColumn
 import androidx.tv.foundation.lazy.list.TvLazyListState
 import androidx.tv.foundation.lazy.list.rememberTvLazyListState
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import com.arflix.tv.data.model.IptvVodSourceIds
 import com.arflix.tv.data.model.RecentPlayedSource
 import com.arflix.tv.data.model.findRecentSourceMatch

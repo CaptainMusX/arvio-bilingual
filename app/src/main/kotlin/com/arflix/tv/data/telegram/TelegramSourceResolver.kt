@@ -355,7 +355,7 @@ class TelegramSourceResolver @Inject constructor(
 
     private fun showToast(message: String) {
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            Toast.makeText(context, com.arflix.tv.util.UiI18n.t(message), Toast.LENGTH_LONG).show()
         }
     }
 

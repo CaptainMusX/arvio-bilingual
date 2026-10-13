@@ -476,9 +476,21 @@ class PlayerViewModel @Inject constructor(
     private val untranslatableSourceIds = mutableSetOf<String>()
 
     /** Shared with [translationManager]; also used directly for AI subtitle line-matching. */
+    /** ARVIO Bilingual: user-configured model (OpenAI Chat / Responses / Anthropic protocol). */
+    private val customAiStore by lazy {
+        com.arflix.tv.ui.screens.player.subtitles.ai.CustomAiConfigStore.from(context)
+    }
+    private val customAiProvider: () -> com.arflix.tv.ui.screens.player.subtitles.ai.CustomAiConfig? = {
+        customAiStore.current
+    }
+    /** A Gemini/Groq key or an active custom model: AI translation can run. */
+    private val aiKeyReady: Boolean
+        get() = aiApiKey.isNotBlank() || customAiStore.current.isActive
+
     private val translationService = SubtitleTranslationService(
         apiKeyProvider = { aiApiKey },
-        modelProvider = { aiModel }
+        modelProvider = { aiModel },
+        customConfigProvider = customAiProvider,
     )
 
     val translationManager: SubtitleTranslationManager = SubtitleTranslationManager(
@@ -878,7 +890,7 @@ class PlayerViewModel @Inject constructor(
             setTargetSubtitleLang(normalizeLanguage(preferredSub))
 
             // Load AI subtitle settings
-            aiSubtitleEnabled = prefs[aiEnabledKey] ?: false
+            aiSubtitleEnabled = (prefs[aiEnabledKey] ?: false) || customAiStore.current.isActive
             aiSubtitleAutoSelect = prefs[aiAutoSelectKey] ?: false
             aiFindBestMatchFirst = prefs[aiFindBestMatchKey] ?: false
             hearingSyncEnabled = prefs[hearingSyncKey] ?: hearingSyncDefault(context)
@@ -888,7 +900,7 @@ class PlayerViewModel @Inject constructor(
                 SubtitleAiModel.valueOf(prefs[aiModelKey] ?: SubtitleAiModel.GROQ_LLAMA_70B.name)
             }.getOrDefault(SubtitleAiModel.GROQ_LLAMA_70B)
             aiRemoveHearingImpaired = prefs[aiRemoveHearingImpairedKey] ?: true
-            translationManager.updateService(apiKey = aiApiKey, model = aiModel)
+            translationManager.updateService(apiKey = aiApiKey, model = aiModel, customConfigProvider = customAiProvider)
             translationManager.removeHearingImpaired = aiRemoveHearingImpaired
             translationManager.isEnabled = false
             leaveSmartBilingual()
@@ -3663,6 +3675,24 @@ class PlayerViewModel @Inject constructor(
 
     /** Commits [served] as the playing subtitle (a local copy of the user's pick, or the pick). */
     private fun applySelectedSubtitle(served: Subtitle) {
+        // ARVIO Bilingual: AI translation is a mode on top of the subtitle, not a track of its own.
+        // While it is on, a newly picked text subtitle becomes the translation source (same file,
+        // no track switching behind the user's back) instead of silently turning translation off.
+        val keepAi = _uiState.value.isAiTranslating && !_uiState.value.smartBilingualActive &&
+            !served.isBitmap && aiSubtitleEnabled && isAiTranslationConfigured()
+        if (keepAi) {
+            aiSourceSubtitle = served
+            untranslatableSourceIds.remove(served.id)
+            translationManager.isEnabled = true
+            translationManager.reset()
+            aiErrorToastShown = false
+            _uiState.value = _uiState.value.copy(
+                selectedSubtitle = served,
+                isAiTranslating = true,
+                subtitleSelectionNonce = _uiState.value.subtitleSelectionNonce + 1
+            )
+            return
+        }
         translationManager.isEnabled = false
         // Keep isAiAvailable/aiTargetLanguageName so the AI entry stays in the menu for re-selection
         _uiState.value = _uiState.value.copy(
@@ -3975,7 +4005,7 @@ class PlayerViewModel @Inject constructor(
      * pick. Returns true when AI took over.
      */
     private fun tryAiFallbackAfterScan(): Boolean {
-        if (!aiSubtitleEnabled || aiApiKey.isBlank()) return false
+        if (!aiSubtitleEnabled || !aiKeyReady) return false
         if (findAiSourceSubtitle(_uiState.value.subtitles) == null) return false
         activateAiTranslation()
         showMatchToast(PlayerMessage.Res(R.string.player_match_none_using_ai))
@@ -4010,7 +4040,7 @@ class PlayerViewModel @Inject constructor(
 
     // ── ARVIO Bilingual: smart mode ─────────────────────────────────────────
     /** True when a Gemini/Groq key is saved (smart mode path B needs nothing else). */
-    fun isAiTranslationConfigured(): Boolean = aiApiKey.isNotBlank()
+    fun isAiTranslationConfigured(): Boolean = aiKeyReady
 
     /** Player menu: (re)start the smart bilingual mode for this video. */
     fun requestSmartBilingual() {
@@ -4047,7 +4077,7 @@ class PlayerViewModel @Inject constructor(
 
     /** Path B: AI-translate [primary] into [targetLanguageName] and show both. */
     fun activateSmartBilingualAi(primary: Subtitle, targetLanguageName: String) {
-        if (aiApiKey.isBlank()) return
+        if (!aiKeyReady) return
         claimSubtitleForSmartMode()
         aiSourceSubtitle = primary
         translationManager.secondarySource = null
@@ -4095,8 +4125,20 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** Menu toggle: AI translation on top of the current subtitle, or off again (track unchanged). */
+    fun toggleAiTranslation() {
+        if (_uiState.value.isAiTranslating && !_uiState.value.smartBilingualActive) deactivateAiTranslation()
+        else activateAiTranslation(userInitiated = true)
+    }
+
+    /** Turns AI translation off and keeps showing the same subtitle track. */
+    fun deactivateAiTranslation() {
+        translationManager.isEnabled = false
+        _uiState.value = _uiState.value.copy(isAiTranslating = false)
+    }
+
     /** Existing behavior: translate the built-in/source subtitle to the target language. */
-    fun activateAiTranslation() {
+    fun activateAiTranslation(userInitiated: Boolean = false) {
         // ARVIO Bilingual: the regular AI option is a different choice than the smart mode.
         if (_uiState.value.smartBilingualActive) leaveSmartBilingual()
         // Defense-in-depth: every caller is already gated on the AI master toggle (menu entry via
@@ -4106,13 +4148,23 @@ class PlayerViewModel @Inject constructor(
         // Re-resolve the source on every activation: an early activation (before embedded tracks
         // resolve) may have cached an external fallback source, and translation inherits the
         // source's timing — keep the cached one only when nothing better is available now.
-        val source = findAiSourceSubtitle(_uiState.value.subtitles) ?: aiSourceSubtitle ?: return
+        // ARVIO Bilingual: translate the subtitle that is ON SCREEN. Turning translation on must not
+        // swap the viewer's track for another one (that is how a subtitle from a different
+        // episode/release used to appear). Only when nothing usable is selected is a source
+        // chosen — and then only from the file's own embedded tracks.
+        // (Automatic activations — auto-select at start, scan fallback — keep upstream's rule of
+        // never translating an addon track ARVIO picked by itself, whose timing is unverified.)
+        val current = _uiState.value.selectedSubtitle?.takeIf {
+            !it.isBitmap && it.id !in untranslatableSourceIds && _uiState.value.subtitles.any { s -> s.id == it.id } &&
+                (userInitiated || it.isEmbedded || userPickedSubtitle)
+        }
+        val source = current ?: findAiSourceSubtitle(_uiState.value.subtitles) ?: aiSourceSubtitle ?: return
         aiSourceSubtitle = source
         cancelSubtitleLocalization()
         hasManualSubtitleSelection = true
-        // AI activation is not a specific user track pick — a late embedded preferred-language
-        // track may still displace it.
-        userPickedSubtitle = false
+        // Translating the track already on screen keeps that pick protected; a source chosen here
+        // (nothing was selected) may still be displaced by a late preferred-language track.
+        userPickedSubtitle = current != null
         // The silent-scan path never populates aiTargetLanguageName (it's set only when a source
         // existed at scan start) — resolve from the preferred-language code so a late activation
         // doesn't hand the manager a BLANK target (which silently translates to nothing).
@@ -4354,7 +4406,7 @@ class PlayerViewModel @Inject constructor(
                 // mean a long blank screen, so wait a short bounded time only: long enough for
                 // tracks to appear on a normal start, short enough that a source without an
                 // embedded English track falls back to the optimistic pick quickly.
-                val aiPossible = aiSubtitleEnabled && aiApiKey.isNotBlank()
+                val aiPossible = aiSubtitleEnabled && aiKeyReady
                 val aiInterimSource = if (!aiPossible) null else {
                     // The scan begins BEFORE the player has opened the file — preload mode gates
                     // prepare on the addon-subtitle fetch, and that same fetch triggers the scan.
@@ -5513,7 +5565,7 @@ class PlayerViewModel @Inject constructor(
              */
             val aiVerdicts = HashMap<String, AiVerdict>()
             while (aiChecks < MATCH_AI_MAX_VERIFICATIONS && referenceCues.isNotEmpty() &&
-                aiSubtitleEnabled && aiApiKey.isNotBlank()
+                aiSubtitleEnabled && aiKeyReady
             ) {
                 aiChecks++
                 val aiTarget = results?.let { list ->
@@ -5798,7 +5850,7 @@ class PlayerViewModel @Inject constructor(
             // not be accepted just because the loop ran out of budget. Timing alone put three
             // rejected subtitles at 0.81-0.82 in one scan, so "highest remaining score" is not a
             // safe default — silence from the verifier means unverified, not approved.
-            val aiIsArbiter = referenceCues.isNotEmpty() && aiSubtitleEnabled && aiApiKey.isNotBlank()
+            val aiIsArbiter = referenceCues.isNotEmpty() && aiSubtitleEnabled && aiKeyReady
             // "Cleared" = the model looked at it and did not reject it. That is enough to SELECT it:
             // a failed or inconclusive check leaves a timing-only fallback, which is fine. Whether it
             // counts as VERIFIED, and may be remembered, is a separate question — see the cache write.
@@ -6057,7 +6109,7 @@ class PlayerViewModel @Inject constructor(
         candidateCues: List<SubtitleSyncMatcher.TimedCue>,
         label: String
     ): AiLineSync? {
-        if (!aiSubtitleEnabled || aiApiKey.isBlank()) return null
+        if (!aiSubtitleEnabled || !aiKeyReady) return null
         // Dialogue only: music/SFX cues ("♪", "[DOOR SLAMS]") are SDH-only and have no counterpart
         // in a translated file, so they can only produce false pairs.
         val refs = referenceCues
@@ -6471,7 +6523,7 @@ class PlayerViewModel @Inject constructor(
         // only replace it once the model's own measurement confirms the audio's timing. Without
         // that measurement there is nothing to confirm it against: AI stays, and the audio does
         // not run at all.
-        val aiPossible = aiSubtitleEnabled && aiApiKey.isNotBlank() && findAiSourceSubtitle(_uiState.value.subtitles) != null
+        val aiPossible = aiSubtitleEnabled && aiKeyReady && findAiSourceSubtitle(_uiState.value.subtitles) != null
         if (aiPossible && anchor == null) {
             Log.i("SubMatch", "audio sync: skipped — AI translation can run and the model measured nothing to check the audio against")
             return false
@@ -6498,7 +6550,7 @@ class PlayerViewModel @Inject constructor(
             if (generation != audioSyncGeneration || !hearingAvailable || userPickedSubtitle) return@launch
             audioSyncTarget = original
             audioSyncRaw = raw
-            val aiCanTakeOver = { aiSubtitleEnabled && aiApiKey.isNotBlank() && findAiSourceSubtitle(_uiState.value.subtitles) != null }
+            val aiCanTakeOver = { aiSubtitleEnabled && aiKeyReady && findAiSourceSubtitle(_uiState.value.subtitles) != null }
             // Where AI can run it holds the screen while the audio works (its timing comes from the
             // built-in track, so it is right from the first line), and the subtitle replaces it
             // only once the audio has confirmed its timing. Otherwise the subtitle is shown now and

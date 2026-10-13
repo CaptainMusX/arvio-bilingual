@@ -25,7 +25,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
+import com.arflix.tv.ui.i18n.M3Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -73,7 +73,9 @@ fun BilingualSubtitleSettingsPanel(
     val context = LocalContext.current
     val store = remember { BilingualSubtitleSettingsStore.from(context) }
     val settings by store.settings.collectAsState()
-    val keyConfigured by store.aiKeyConfigured.collectAsState(initial = true)
+    val geminiKeyConfigured by store.aiKeyConfigured.collectAsState(initial = true)
+    val customAi by remember { com.arflix.tv.ui.screens.player.subtitles.ai.CustomAiConfigStore.from(context) }.config.collectAsState()
+    val keyConfigured = geminiKeyConfigured || customAi.isActive
     var advanced by rememberSaveable { mutableStateOf(false) }
 
     Column(
@@ -83,7 +85,7 @@ fun BilingualSubtitleSettingsPanel(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (!keyConfigured) {
-            Hint(bt("No Gemini/Groq API key is set. Add it in Settings → AI Subtitles; until then only the original subtitle can be shown."))
+            Hint(bt("No AI is set up for translation. Add a Gemini/Groq key in Settings → AI Subtitles, or turn on a custom model below; until then only the original subtitle can be shown."))
         } else if (aiAvailable == false) {
             Hint(bt("This video has no embedded text subtitle that AI can translate (image subtitles such as PGS can't be read). Pick another source or a normal subtitle track."))
         }
@@ -193,6 +195,8 @@ fun BilingualSubtitleSettingsPanel(
         if (SubtitleLanguageMatcher.sameLanguage(settings.primaryExplicit, settings.secondary)) {
             Hint(bt("Primary and secondary are the same language — only one line would be shown. Pick a different secondary language."))
         }
+
+        CustomAiSection(targetLanguageName = settings.secondary.translationTargetName)
 
         SectionTitle(bt("Display mode"))
         ChipRow(

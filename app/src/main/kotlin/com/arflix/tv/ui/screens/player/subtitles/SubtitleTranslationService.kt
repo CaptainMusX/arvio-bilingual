@@ -60,8 +60,88 @@ private val GEMINI_RETRYABLE_HTTP = setOf(500, 502, 503)
 
 class SubtitleTranslationService(
     private val apiKeyProvider: () -> String,
-    private val modelProvider: () -> SubtitleAiModel = { SubtitleAiModel.GROQ_LLAMA_70B }
+    private val modelProvider: () -> SubtitleAiModel = { SubtitleAiModel.GROQ_LLAMA_70B },
+    /** ARVIO Bilingual: a user-configured model (OpenAI Chat / Responses / Anthropic). Wins when active. */
+    private val customConfigProvider: () -> com.arflix.tv.ui.screens.player.subtitles.ai.CustomAiConfig? = { null },
 ) {
+    private fun activeCustom() = runCatching { customConfigProvider() }.getOrNull()?.takeIf { it.isActive }
+
+    /** True when either the custom model or a Gemini/Groq key can translate. */
+    fun isConfigured(): Boolean = activeCustom() != null || apiKeyProvider().isNotBlank()
+
+    /**
+     * One round trip to the custom model. Returns the model text, or an error string in the same
+     * vocabulary the manager already understands ("RATE_LIMITED", "HTTP 401: …").
+     */
+    private suspend fun callCustom(
+        c: com.arflix.tv.ui.screens.player.subtitles.ai.CustomAiConfig,
+        system: String,
+        user: String,
+        transientAttempt: Int = 0,
+    ): Pair<String?, String?> {
+        val wire = com.arflix.tv.ui.screens.player.subtitles.ai.CustomAiWire
+        val url = c.endpointUrl()
+        val builder = runCatching { Request.Builder().url(url) }.getOrElse {
+            return null to "Invalid API URL: $url"
+        }
+        wire.headers(c).forEach { (k, v) -> builder.header(k, v) }
+        builder.header("Content-Type", "application/json")
+        val request = builder
+            .post(wire.buildBody(c, system, user, jsonMode = true).toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        return withContext(Dispatchers.IO) {
+            try {
+                customClient.newCall(request).execute().use { response ->
+                    val body = response.body?.string()
+                    if (!response.isSuccessful) {
+                        if (response.code in GEMINI_RETRYABLE_HTTP && transientAttempt < GEMINI_MAX_TRANSIENT_RETRIES) {
+                            geminiBackoff(transientAttempt)
+                            return@withContext callCustom(c, system, user, transientAttempt + 1)
+                        }
+                        val reason = wire.errorMessage(body).orEmpty()
+                        Log.w(TAG, "custom model HTTP ${response.code}: ${reason.take(200)}")
+                        return@withContext null to when (response.code) {
+                            429 -> "RATE_LIMITED"
+                            else -> "HTTP ${response.code}: $reason"
+                        }
+                    }
+                    val text = body?.let { wire.extractText(c.protocol, it) }
+                    if (text.isNullOrBlank()) null to "Empty response from ${c.model}" else text to null
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is java.io.IOException && transientAttempt < GEMINI_MAX_TRANSIENT_RETRIES) {
+                    geminiBackoff(transientAttempt)
+                    return@withContext callCustom(c, system, user, transientAttempt + 1)
+                }
+                Log.w(TAG, "custom model call failed: ${e.message}")
+                null to (e.message ?: "Network error")
+            }
+        }
+    }
+
+    private suspend fun translateCustom(
+        c: com.arflix.tv.ui.screens.player.subtitles.ai.CustomAiConfig,
+        lines: List<String>,
+        targetLanguage: String,
+        attempt: Int = 0,
+    ): TranslationResult {
+        val NL = "⏎"
+        val (text, error) = callCustom(c, buildSystemPrompt(targetLanguage, NL), "Translate to $targetLanguage:\n${encodeIndexed(lines, NL)}")
+        if (text == null) return TranslationResult(lines, false, error)
+        val parsed = parseTranslationResult(lines, targetLanguage, text, NL)
+        if (!parsed.success && attempt == 0) return translateCustom(c, lines, targetLanguage, attempt = 1)
+        return parsed
+    }
+
+    /** Settings "Test": translates one line with the given config. */
+    suspend fun testCustom(c: com.arflix.tv.ui.screens.player.subtitles.ai.CustomAiConfig, targetLanguage: String): TranslationResult =
+        translateCustom(c.copy(enabled = true), listOf("Winter is coming."), targetLanguage, attempt = 1)
+
+    private val customClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(90, TimeUnit.SECONDS)
+        .build()
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -166,14 +246,15 @@ class SubtitleTranslationService(
         candidateLines: List<String>
     ): List<LineMatch>? {
         if (referenceLines.isEmpty() || candidateLines.isEmpty()) return null
-        val apiKey = apiKeyProvider()
-        if (apiKey.isBlank()) return null
         val prompt = buildMatchPrompt()
         val payload = "REFERENCE:\n${encodeIndexed(referenceLines, " ")}\n\nCANDIDATE:\n${encodeIndexed(candidateLines, " ")}"
-        val raw = when (modelProvider()) {
+        val custom = activeCustom()
+        val apiKey = apiKeyProvider()
+        if (custom == null && apiKey.isBlank()) return null
+        val raw = (if (custom != null) callCustom(custom, prompt, payload).first else when (modelProvider()) {
             SubtitleAiModel.GROQ_LLAMA_70B -> matchGroq(prompt, payload, apiKey)
             SubtitleAiModel.GEMINI_FLASH_25 -> matchGemini(prompt, payload, apiKey)
-        } ?: return null
+        }) ?: return null
         val array = extractJsonArray(raw) ?: return null
         val matches = ArrayList<LineMatch>(array.length())
         for (i in 0 until array.length()) {
@@ -286,13 +367,14 @@ class SubtitleTranslationService(
         depth: Int
     ): TranslationResult {
         if (lines.isEmpty()) return TranslationResult(lines, true)
+        val custom = activeCustom()
         val apiKey = apiKeyProvider()
-        if (apiKey.isBlank()) {
+        if (custom == null && apiKey.isBlank()) {
             Log.e(TAG, "API key is blank — translation skipped")
             return TranslationResult(lines, false, "API key missing")
         }
 
-        val result = when (modelProvider()) {
+        val result = if (custom != null) translateCustom(custom, lines, targetLanguage) else when (modelProvider()) {
             SubtitleAiModel.GROQ_LLAMA_70B -> translateGroq(lines, targetLanguage, apiKey)
             SubtitleAiModel.GEMINI_FLASH_25 -> translateGemini(lines, targetLanguage, apiKey)
         }

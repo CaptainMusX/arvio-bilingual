@@ -40,7 +40,7 @@ import androidx.compose.ui.res.painterResource
 import com.arflix.tv.R
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import com.arflix.tv.ui.i18n.M3Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue

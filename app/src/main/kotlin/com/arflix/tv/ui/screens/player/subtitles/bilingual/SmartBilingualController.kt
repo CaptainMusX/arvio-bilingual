@@ -79,7 +79,9 @@ fun SmartBilingualController(
     LaunchedEffect(Unit) {
         BilingualPlayerBridge.requests.collect { viewModel.requestSmartBilingual() }
     }
-    val suspendedByUser = uiState.subtitleUserPickNonce != pickBaseline
+    // A subtitle the user picks while bilingual is on becomes the new primary (re-planned below);
+    // only turning subtitles Off from the menu pauses the bilingual layer for this video.
+    val suspendedByUser = uiState.subtitleUserPickNonce != pickBaseline && uiState.selectedSubtitle == null
     val active = (settings.smartEnabled || requestedForStream) && !suspendedByUser
 
     // Track list of the tap changes only a few times per file; poll its version cheaply.
@@ -115,6 +117,7 @@ fun SmartBilingualController(
     LaunchedEffect(
         active, settings.generationMode, settings.primaryLanguage, settings.secondaryLanguage,
         uiState.subtitles, tapSignature, unreliable, stream, primaryOverride, secondaryOverride,
+        uiState.selectedSubtitle?.id,
     ) {
         if (!active) {
             appliedPlanKey = null

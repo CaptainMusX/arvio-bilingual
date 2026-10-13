@@ -191,49 +191,43 @@ object SmartBilingualPlanner {
     }
 
     /**
-     * Primary track: the user's own pick is never replaced; an explicit Primary language picks its
-     * best track; Auto uses the selected text track (when it is not the secondary language), then
-     * the audio language, then English, then any non-forced text track.
+     * Primary track. Turning bilingual/translation on must NEVER change the subtitle the viewer
+     * is watching: whatever text track is selected right now (embedded or addon, picked by the
+     * user or by ARVIO) stays the primary, and only the second line is added. (Switching tracks
+     * here used to swap a correct subtitle for another one — sometimes an addon result matched to
+     * a different episode.) Only when nothing usable is selected does the planner choose one,
+     * and then it only takes the file's own embedded tracks first (always in sync with this
+     * video): an explicit Primary language, then the audio language, then English, then any.
      */
     internal fun resolvePrimary(input: Input, text: List<SubtitleCandidate>): SubtitleCandidate? {
         text.firstOrNull { it.id == input.primaryOverrideId }?.let { return it }
         val selected = text.firstOrNull { it.id == input.selectedId }
-        if (input.userPinnedSelection && selected != null) return selected
+        if (selected != null) return selected
 
         val notSecondary = text.filter {
             SubtitleLanguageMatcher.match(it.language, input.secondaryLanguage) == LanguageMatch.NONE
         }
         val explicit = SubtitleLanguage.parse(input.primaryPreference)
-        if (explicit != null) {
-            val exact = text.filter { SubtitleLanguageMatcher.match(it.language, explicit) == LanguageMatch.EXACT }
-            val amb = text.filter { SubtitleLanguageMatcher.match(it.language, explicit) == LanguageMatch.AMBIGUOUS_SCRIPT }
-            rank(exact.filter { !it.isForced }).firstOrNull()?.let { return it }
-            rank(amb.filter { !it.isForced }).firstOrNull()?.let { return it }
-            // Explicit language not available: fall through to Auto rather than show nothing.
-        }
         val audio = SubtitleLanguage.parse(input.audioLanguageTag)
-        if (selected != null && !selected.isForced && selected in notSecondary) {
-            if (selected.isEmbedded) return selected
-            // The player auto-picked an ADDON subtitle. Addon results are matched by title and
-            // are often from another episode/release; the file's own embedded track is always in
-            // sync with this video, so prefer it whenever one exists.
-            val embedded = notSecondary.filter { it.isEmbedded && !it.isForced }
-            if (embedded.isEmpty()) return selected
-            rank(embedded.filter { SubtitleLanguageMatcher.match(it.language, selected.language) != LanguageMatch.NONE })
-                .firstOrNull()?.let { return it }
-            if (audio != null) {
-                rank(embedded.filter { SubtitleLanguageMatcher.match(it.language, audio) != LanguageMatch.NONE })
+        // Embedded tracks first, addon results only when the file has no usable text track.
+        val pools = listOf(text.filter { it.isEmbedded }, text.filter { !it.isEmbedded })
+        for (all in pools) {
+            if (all.isEmpty()) continue
+            if (explicit != null) {
+                rank(all.filter { !it.isForced && SubtitleLanguageMatcher.match(it.language, explicit) == LanguageMatch.EXACT })
+                    .firstOrNull()?.let { return it }
+                rank(all.filter { !it.isForced && SubtitleLanguageMatcher.match(it.language, explicit) == LanguageMatch.AMBIGUOUS_SCRIPT })
                     .firstOrNull()?.let { return it }
             }
-            rank(embedded.filter { it.language?.base == "en" }).firstOrNull()?.let { return it }
-            return rank(embedded).first()
+            val pool = all.filter { it in notSecondary }
+            if (pool.isEmpty()) continue
+            if (audio != null) {
+                rank(pool.filter { !it.isForced && SubtitleLanguageMatcher.match(it.language, audio) != LanguageMatch.NONE })
+                    .firstOrNull()?.let { return it }
+            }
+            rank(pool.filter { !it.isForced && it.language?.base == "en" }).firstOrNull()?.let { return it }
+            rank(pool.filter { !it.isForced }).firstOrNull()?.let { return it }
         }
-        if (audio != null) {
-            rank(notSecondary.filter { !it.isForced && SubtitleLanguageMatcher.match(it.language, audio) != LanguageMatch.NONE })
-                .firstOrNull()?.let { return it }
-        }
-        rank(notSecondary.filter { !it.isForced && it.language?.base == "en" }).firstOrNull()?.let { return it }
-        rank(notSecondary.filter { !it.isForced }).firstOrNull()?.let { return it }
         return rank(notSecondary).firstOrNull()
     }
 

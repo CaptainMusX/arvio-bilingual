@@ -391,7 +391,7 @@ internal class ArvioAudioSync(
             is AudioSyncStatus.Adjusted ->
                 appContext.getString(R.string.player_audio_sync_adjusted, formatOffset(status.offsetMs))
         }
-        mainHandler.post { Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show() }
+        mainHandler.post { Toast.makeText(appContext, com.arflix.tv.util.UiI18n.t(message), Toast.LENGTH_SHORT).show() }
     }
 
     /**

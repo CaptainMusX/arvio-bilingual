@@ -190,19 +190,30 @@ class SmartBilingualPlannerTest {
         assertEquals(BilingualGenerationMode.AUTO, BilingualSettingsCodec.decode("{\"mode\":\"bilingual\"}").generationMode)
     }
 
-    @Test fun `an auto-picked addon subtitle never beats the file's own embedded track`() {
+    private fun primaryOf(plan: SmartPlan) = when (plan) {
+        is SmartPlan.MergeEmbedded -> plan.primary.id
+        is SmartPlan.AiTranslate -> plan.primary.id
+        is SmartPlan.PrimaryOnly -> plan.primary.id
+        else -> null
+    }
+
+    @Test fun `turning bilingual on never changes the selected subtitle - addon pick kept`() {
         val addonEn = SubtitleCandidate("addon-en", "en", "English (OpenSubtitles)", false, false, false, null)
-        val plan = SmartBilingualPlanner.plan(input(addonEn, en, zhHans, selected = "addon-en", pinned = false))
-        plan as SmartPlan.MergeEmbedded
-        assertEquals("3", plan.primary.id)
-        // A subtitle the user picked by hand is still respected.
-        val pinned = SmartBilingualPlanner.plan(input(addonEn, en, zhHans, selected = "addon-en", pinned = true))
-        val pinnedPrimary = when (pinned) {
-            is SmartPlan.MergeEmbedded -> pinned.primary.id
-            is SmartPlan.AiTranslate -> pinned.primary.id
-            is SmartPlan.PrimaryOnly -> pinned.primary.id
-            else -> null
-        }
-        assertEquals("addon-en", pinnedPrimary)
+        // Auto-picked or user-picked: either way the selected track stays the primary.
+        assertEquals("addon-en", primaryOf(SmartBilingualPlanner.plan(input(addonEn, en, zhHans, selected = "addon-en", pinned = false))))
+        assertEquals("addon-en", primaryOf(SmartBilingualPlanner.plan(input(addonEn, en, zhHans, selected = "addon-en", pinned = true))))
+    }
+
+    @Test fun `selected track is kept even when another language is preferred`() {
+        assertEquals("9", primaryOf(SmartBilingualPlanner.plan(input(en, ja, zhHans, primary = "en", selected = "9"))))
+        assertEquals("4", primaryOf(SmartBilingualPlanner.plan(input(en, enSdh, zhHans, selected = "4"))))
+        assertEquals("9", primaryOf(SmartBilingualPlanner.plan(input(en, ja, mode = BilingualGenerationMode.AI_TRANSLATE, selected = "9"))))
+    }
+
+    @Test fun `nothing selected - embedded track chosen before any addon result`() {
+        val addonEn = SubtitleCandidate("addon-en", "en", "English (OpenSubtitles)", false, false, false, null)
+        assertEquals("3", primaryOf(SmartBilingualPlanner.plan(input(addonEn, en, zhHans))))
+        // No embedded text track at all: an addon result is the only possible primary.
+        assertEquals("addon-en", primaryOf(SmartBilingualPlanner.plan(input(addonEn, zhPgs))))
     }
 }

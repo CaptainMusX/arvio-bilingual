@@ -16,7 +16,7 @@ import com.arflix.tv.util.findActivity
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.material3.Text
+import com.arflix.tv.ui.i18n.M3Text as Text
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -4909,7 +4909,7 @@ fun LiveTvScreen(
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { programActionDialog = null },
                 title = {
-                    androidx.tv.material3.Text(
+                    com.arflix.tv.ui.i18n.TvText(
                         text = program.title,
                         style = ArflixTypography.cardTitle,
                         color = Color.White,
@@ -4919,12 +4919,12 @@ fun LiveTvScreen(
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        androidx.tv.material3.Text(
+                        com.arflix.tv.ui.i18n.TvText(
                             text = channel.name,
                             style = ArflixTypography.caption,
                             color = TextSecondary,
                         )
-                        androidx.tv.material3.Text(
+                        com.arflix.tv.ui.i18n.TvText(
                             text = "${formatClock(program.startUtcMillis)} - ${formatClock(program.endUtcMillis)}",
                             style = ArflixTypography.body,
                             color = TextSecondary,
@@ -4943,7 +4943,7 @@ fun LiveTvScreen(
                                 onNavigateToDetails(vodMatch.mediaType, vodMatch.id)
                             },
                         ) {
-                            androidx.tv.material3.Text(
+                            com.arflix.tv.ui.i18n.TvText(
                                 text = stringResource(R.string.epg_search_sources),
                                 style = ArflixTypography.button,
                                 color = Pink,
@@ -4961,7 +4961,7 @@ fun LiveTvScreen(
                             }
                         },
                     ) {
-                        androidx.tv.material3.Text(
+                        com.arflix.tv.ui.i18n.TvText(
                             text = stringResource(R.string.epg_watch_live),
                             style = ArflixTypography.button,
                             color = Color.White,
@@ -5008,13 +5008,13 @@ fun LiveTvScreen(
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { showMissingProfilePinDialog = false },
                 title = {
-                    androidx.tv.material3.Text(
+                    com.arflix.tv.ui.i18n.TvText(
                         text = stringResource(R.string.live_group_pin_required_title),
                         color = Color.White,
                     )
                 },
                 text = {
-                    androidx.tv.material3.Text(
+                    com.arflix.tv.ui.i18n.TvText(
                         text = stringResource(R.string.live_group_pin_required_message),
                         color = TextSecondary,
                     )
@@ -5026,7 +5026,7 @@ fun LiveTvScreen(
                             onNavigateToSettings()
                         },
                     ) {
-                        androidx.tv.material3.Text(
+                        com.arflix.tv.ui.i18n.TvText(
                             text = stringResource(R.string.settings),
                             color = Pink,
                         )
@@ -5036,7 +5036,7 @@ fun LiveTvScreen(
                     androidx.compose.material3.TextButton(
                         onClick = { showMissingProfilePinDialog = false },
                     ) {
-                        androidx.tv.material3.Text(
+                        com.arflix.tv.ui.i18n.TvText(
                             text = stringResource(R.string.cancel),
                             color = TextSecondary,
                         )
@@ -5255,7 +5255,7 @@ fun FullscreenSourcesOverlay(
                         .padding(horizontal = 24.dp, vertical = 32.dp)
                         .pointerInput(Unit) { detectTapGestures { } } // Blocks touches that pass through the panel
                 ) {
-                    androidx.tv.material3.Text(
+                    com.arflix.tv.ui.i18n.TvText(
                         text = stringResource(R.string.live_label_choose_source),
                         color = Color.White,
                         fontSize = 22.sp,
@@ -5263,7 +5263,7 @@ fun FullscreenSourcesOverlay(
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
 
-                    androidx.tv.material3.Text(
+                    com.arflix.tv.ui.i18n.TvText(
                         text = currentChannel?.name ?: "",
                         color = Color.Gray,
                         fontSize = 14.sp,
@@ -5280,9 +5280,9 @@ fun FullscreenSourcesOverlay(
                             CircularProgressIndicator(color = Color(0xFF5CE1E6))
                         }
                     } else if (failed) {
-                        androidx.tv.material3.Text(stringResource(R.string.live_sources_failed), color = Color.White)
+                        com.arflix.tv.ui.i18n.TvText(stringResource(R.string.live_sources_failed), color = Color.White)
                     } else if (variants.isEmpty() || variants.size == 1) {
-                        androidx.tv.material3.Text(
+                        com.arflix.tv.ui.i18n.TvText(
                             text = stringResource(R.string.live_sources_empty),
                             color = Color.LightGray,
                             fontSize = 14.sp
@@ -5330,7 +5330,7 @@ fun FullscreenSourcesOverlay(
                                     }
 
                                     Column(verticalArrangement = Arrangement.Center) {
-                                        androidx.tv.material3.Text(
+                                        com.arflix.tv.ui.i18n.TvText(
                                             text = variant.name,
                                             color = textColor,
                                             fontSize = 15.sp,
@@ -5341,7 +5341,7 @@ fun FullscreenSourcesOverlay(
 
                                         val groupName = variant.source.group.takeIf { it.isNotBlank() }
                                             ?: stringResource(R.string.live_cat_ungrouped)
-                                        androidx.tv.material3.Text(
+                                        com.arflix.tv.ui.i18n.TvText(
                                             text = groupName,
                                             color = if (isFocused) Color(0xFF616161) else Color(0xFF9E9E9E),
                                             fontSize = 12.sp,
@@ -5359,7 +5359,7 @@ fun FullscreenSourcesOverlay(
                         onClick = onDismiss,
                         modifier = if (!hasAlternatives) initialFocus else Modifier.padding(top = 16.dp),
                     ) {
-                        androidx.tv.material3.Text(
+                        com.arflix.tv.ui.i18n.TvText(
                             text = stringResource(android.R.string.cancel),
                             color = Color(0xFF9E9E9E)
                         )

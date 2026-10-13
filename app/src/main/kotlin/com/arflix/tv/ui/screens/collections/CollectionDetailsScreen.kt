@@ -970,7 +970,7 @@ private fun CollectionTabChip(
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 7.dp)
     ) {
-        androidx.tv.material3.Text(
+        com.arflix.tv.ui.i18n.TvText(
             text = label,
             style = ArflixTypography.sectionTitle.copy(
                 fontSize = 13.sp,
@@ -1259,7 +1259,7 @@ private fun CollectionEmptyState(message: String) {
             .height(320.dp),
         contentAlignment = Alignment.Center
     ) {
-        androidx.tv.material3.Text(
+        com.arflix.tv.ui.i18n.TvText(
             text = message,
             color = TextSecondary,
             style = ArflixTypography.body

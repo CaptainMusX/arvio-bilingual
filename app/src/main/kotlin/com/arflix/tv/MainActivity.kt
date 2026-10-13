@@ -112,7 +112,7 @@ import androidx.metrics.performance.PerformanceMetricsState
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
@@ -389,6 +389,7 @@ class MainActivity : ComponentActivity() {
                 val lang = java.util.Locale.forLanguageTag(appLanguage.replace('_', '-')).language
                 lang in listOf("ar", "he", "iw", "fa", "ur")
             }
+            com.arflix.tv.util.UiI18n.currentTag = appLanguage
             CompositionLocalProvider(
                 androidx.compose.ui.platform.LocalContext provides localizedContext,
                 LocalAppLanguage provides appLanguage,

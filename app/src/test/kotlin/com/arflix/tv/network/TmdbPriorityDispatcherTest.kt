@@ -60,13 +60,13 @@ class TmdbPriorityDispatcherTest {
             }
         }
         runCurrent()
-        assertEquals(3, active[Priority.IMMEDIATE])
-        assertEquals(2, active[Priority.DEFERRED])
-        assertEquals(1, active[Priority.BACKGROUND])
-        assertEquals(6, peakTotal)
+        assertEquals(4, active[Priority.IMMEDIATE])
+        assertEquals(4, active[Priority.DEFERRED])
+        assertEquals(2, active[Priority.BACKGROUND])
+        assertEquals(10, peakTotal)
         release.complete(Unit)
         jobs.forEach { it.join() }
-        assertEquals(6, peakTotal)
+        assertEquals(10, peakTotal)
         assertEquals(0, active.values.sum())
     }
 

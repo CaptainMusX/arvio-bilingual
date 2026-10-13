@@ -59,7 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
+import com.arflix.tv.ui.i18n.TvText as Text
 import com.arflix.tv.R
 import com.arflix.tv.data.model.IptvNowNext
 import com.arflix.tv.data.model.IptvProgram
@@ -254,7 +254,7 @@ fun SearchOverlay(
                         },
                     decorationBox = { inner ->
                         if (query.isEmpty()) {
-                            androidx.compose.material3.Text(
+                            com.arflix.tv.ui.i18n.M3Text(
                                 stringResource(R.string.live_hint_search),
                                 style = TextStyle(color = LiveColors.FgMute, fontSize = 18.sp),
                             )

@@ -102,7 +102,7 @@ class ApkInstallReceiver : BroadcastReceiver() {
 
     private fun showToast(context: Context, text: String) {
         try {
-            Toast.makeText(context.applicationContext, text, Toast.LENGTH_LONG).show()
+            Toast.makeText(context.applicationContext, com.arflix.tv.util.UiI18n.t(text), Toast.LENGTH_LONG).show()
         } catch (_: Exception) {
             // Receiver may not have a main looper in some paths; swallow silently.
         }
