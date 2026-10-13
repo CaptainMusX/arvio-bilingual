@@ -47,4 +47,10 @@ class UiI18nTest {
         UiI18n.loadForTest("zh-TW", File(dir, "zh-TW.json").readText())
         assertEquals("體育", UiI18n.t("Sports"))
     }
+
+    /** Android (ICU) throws PatternSyntaxException on a bare '}' that the JVM accepts. */
+    @Test
+    fun `placeholder regex escapes both braces for Android ICU`() {
+        assertEquals("\\{(\\d)\\}", UiI18n.PLACEHOLDER.pattern)
+    }
 }

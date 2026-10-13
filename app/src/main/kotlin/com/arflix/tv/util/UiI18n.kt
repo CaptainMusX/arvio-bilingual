@@ -39,6 +39,9 @@ object UiI18n {
     /** The app language tag ("zh-CN", "en-US"…) last seen by the Compose tree; null = use the default locale. */
     @Volatile var currentTag: String? = null
 
+    // Android's ICU regex rejects an unescaped '}' — always escape both braces.
+    internal val PLACEHOLDER = Regex("\\{(\\d)\\}")
+
     private fun ensureLoaded(): Boolean {
         val want = dictionaryFor(currentTag?.let { appLocale(it) } ?: Locale.getDefault())
         if (want == loadedFor) return want != null
@@ -60,7 +63,10 @@ object UiI18n {
         val json = runCatching {
             ctx.assets.open("i18n/$lang.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
         }.getOrNull() ?: return
-        parse(json)
+        // A bad dictionary must never crash the app: fall back to untranslated UI.
+        runCatching { parse(json) }.onFailure {
+            exact = emptyMap(); exactFolded = emptyMap(); patterns = emptyList()
+        }
     }
 
     /** Unit tests: install a dictionary for [tag] without Android assets. */
@@ -92,10 +98,10 @@ object UiI18n {
 
     /** "Subtitles: {0}" → ^Subtitles: (.+?)$ */
     private fun compile(source: String, template: String): Pattern? {
-        val parts = Regex("\\{(\\d)}").split(source)
+        val parts = PLACEHOLDER.split(source)
         if (parts.joinToString("").count { it.isLetter() } < 2) return null
         val sb = StringBuilder("^")
-        val holders = Regex("\\{(\\d)}").findAll(source).toList()
+        val holders = PLACEHOLDER.findAll(source).toList()
         parts.forEachIndexed { i, part ->
             sb.append(Regex.escape(part))
             if (i < holders.size) sb.append("(.+?)")
@@ -112,7 +118,13 @@ object UiI18n {
         return t(text)
     }
 
-    fun t(text: String): String {
+    fun t(text: String): String = try {
+        translate(text)
+    } catch (e: Throwable) {
+        text
+    }
+
+    private fun translate(text: String): String {
         if (text.isEmpty() || !ensureLoaded()) return text
         if (text.length > 400) return text
         memo[text]?.let { return it }
