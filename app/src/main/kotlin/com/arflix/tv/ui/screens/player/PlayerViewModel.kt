@@ -6515,26 +6515,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * ARVIO Bilingual: "Sync to audio" — listen to the soundtrack and shift/retime the subtitle
-     * that is on screen (or the one AI is translating). Returns a short message for the user.
-     */
-    fun syncSelectedSubtitleByAudio(): String {
-        val sel = (if (_uiState.value.isAiTranslating) aiSourceSubtitle else null) ?: _uiState.value.selectedSubtitle
-            ?: return "Pick a subtitle first."
-        if (!BuildConfig.AUDIO_SYNC_AVAILABLE) return "Sync to audio isn't available in this build."
-        if (!hearingSyncEnabled) return "Turn on \"Sync by Hearing\" in Settings first."
-        if (sel.isEmbedded) return "Built-in subtitles are timed with the video. Use the subtitle delay to fine-tune."
-        audioSyncOrNull() ?: return "Sync to audio can't run on this stream."
-        armAudioSync()
-        val started = startHearingFallback(sel, anchor = null, force = true) {
-            viewModelScope.launch(Dispatchers.Main) {
-                android.widget.Toast.makeText(context, com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("Couldn't confirm the timing from the audio."), android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
-        return if (started) "Listening to the audio to sync the subtitle…" else "Sync to audio can't run on this subtitle."
-    }
-
-    /**
      * The scan verified nothing: show [pick] (replacing AI translation if it held the screen during
      * the scan) and sync it to the audio. [onFailed] — the scan's own no-match fallback — runs when
      * the audio can't confirm it. False when the audio sync can't take over at all (the caller
@@ -6543,20 +6523,17 @@ class PlayerViewModel @Inject constructor(
     private fun startHearingFallback(
         pick: Subtitle,
         anchor: com.arflix.tv.ui.screens.player.audiosync.ArvioAudioSync.LocalAnchor? = null,
-        /** The user asked for it ("Sync to audio"): run even over their own pick or AI translation. */
-        force: Boolean = false,
         onFailed: () -> Unit,
     ): Boolean {
         val sync = audioSync ?: return false
-        if (!hearingAvailable || (!force && !sync.canTakeOver) || pick.isEmbedded) return false
+        if (!hearingAvailable || !sync.canTakeOver || pick.isEmbedded) return false
         // Where AI can run, its timing (from the file's own track) is right, and the audio may
         // only replace it once the model's own measurement confirms the audio's timing. Without
         // that measurement there is nothing to confirm it against: AI stays, and the audio does
         // not run at all.
-        // ARVIO Bilingual: AI only holds the screen on its own when auto-select is on. A configured
-        // custom model alone must not switch the audio sync off (2026-10-13: subtitles drifted).
-        val aiPossible = !force && aiSubtitleEnabled && aiSubtitleAutoSelect && aiKeyReady &&
-            findAiSourceSubtitle(_uiState.value.subtitles) != null
+        // ARVIO Bilingual: upstream logic unchanged; only the Settings AI switch counts here, so a
+        // saved custom translation service never switches Sync by Hearing off on its own.
+        val aiPossible = aiSubtitleEnabledPref && aiKeyReady && findAiSourceSubtitle(_uiState.value.subtitles) != null
         if (aiPossible && anchor == null) {
             Log.i("SubMatch", "audio sync: skipped — AI translation can run and the model measured nothing to check the audio against")
             return false
@@ -6573,17 +6550,17 @@ class PlayerViewModel @Inject constructor(
             val raw = (preloadedCopyFor(original)?.url?.let { SubtitleSyncMatcher.loadRaw(it, original.lang) })
                 ?: SubtitleSyncMatcher.loadRaw(original.url, original.lang)
             // The user moved on meanwhile (another stream, their own pick): nothing to fall back from.
-            if (generation != audioSyncGeneration || _uiState.value.selectedStreamUrl != streamUrl || (!force && userPickedSubtitle)) return@launch
+            if (generation != audioSyncGeneration || _uiState.value.selectedStreamUrl != streamUrl || userPickedSubtitle) return@launch
             if (raw == null) {
                 Log.i("SubMatch", "audio sync: \"${original.label}\" unreadable — next fallback")
                 onFailed()
                 return@launch
             }
             val cues = withContext(Dispatchers.Default) { SubtitleSyncMatcher.parseCues(raw) }
-            if (generation != audioSyncGeneration || !hearingAvailable || (!force && userPickedSubtitle)) return@launch
+            if (generation != audioSyncGeneration || !hearingAvailable || userPickedSubtitle) return@launch
             audioSyncTarget = original
             audioSyncRaw = raw
-            val aiCanTakeOver = { !force && aiSubtitleEnabled && aiSubtitleAutoSelect && aiKeyReady && findAiSourceSubtitle(_uiState.value.subtitles) != null }
+            val aiCanTakeOver = { aiSubtitleEnabledPref && aiKeyReady && findAiSourceSubtitle(_uiState.value.subtitles) != null }
             // Where AI can run it holds the screen while the audio works (its timing comes from the
             // built-in track, so it is right from the first line), and the subtitle replaces it
             // only once the audio has confirmed its timing. Otherwise the subtitle is shown now and
