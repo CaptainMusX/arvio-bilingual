@@ -3,6 +3,8 @@ package com.arflix.tv.ui.screens.player.subtitles.bilingual
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +33,9 @@ class BilingualSettingsStoreTest {
         // Applied in memory immediately (live preview while dragging).
         assertEquals(20, store1.settings.value.gapDp)
         store1.flush()
-        scope1.cancel()
+        // Fully release the first DataStore before opening the file again (DataStore forbids
+        // two active instances on one file).
+        scope1.coroutineContext[Job]!!.cancelAndJoin()
 
         // "Restart": a brand-new DataStore + store over the same file.
         val scope2 = CoroutineScope(SupervisorJob() + Dispatchers.IO)

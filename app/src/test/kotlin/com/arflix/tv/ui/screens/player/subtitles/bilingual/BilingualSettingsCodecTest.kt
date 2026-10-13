@@ -64,6 +64,6 @@ class BilingualSettingsCodecTest {
         assertNull(BilingualColors.normalizeHex("yellow"))
         assertEquals(0xFFF4D979.toInt(), BilingualColors.parseArgb("#F4D979"))
         assertEquals(0x80FFFFFF.toInt(), BilingualColors.parseArgb("#80FFFFFF"))
-        assertEquals(7, BilingualColors.parseArgb("bad", 7))
+        assertEquals(7, BilingualColors.parseArgb("nope", 7))
     }
 }
