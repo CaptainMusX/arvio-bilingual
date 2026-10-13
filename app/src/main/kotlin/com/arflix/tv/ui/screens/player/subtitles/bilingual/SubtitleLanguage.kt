@@ -27,6 +27,20 @@ data class SubtitleLanguage(val base: String, val script: String? = null) {
                 .ifBlank { base }
         }
 
+    /** Name shown in the UI, in the app's interface language. */
+    val localName: String
+        get() {
+            val ui = Locale.getDefault()
+            if (ui.language != "zh") return displayName
+            val hant = BilingualStrings.isTraditional(ui)
+            return when {
+                base == "zh" && script == HANS -> if (hant) "簡體中文" else "简体中文"
+                base == "zh" && script == HANT -> if (hant) "繁體中文" else "繁体中文"
+                base == "zh" -> "中文"
+                else -> Locale.forLanguageTag(base).getDisplayLanguage(ui).ifBlank { displayName }
+            }
+        }
+
     /** Name used in the AI prompt (unambiguous for Chinese scripts). */
     val translationTargetName: String
         get() = when {

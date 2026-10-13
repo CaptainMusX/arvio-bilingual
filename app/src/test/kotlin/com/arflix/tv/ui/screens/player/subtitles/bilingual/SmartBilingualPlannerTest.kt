@@ -189,4 +189,14 @@ class SmartBilingualPlannerTest {
         // Old settings files (no generationMode key) load as Auto.
         assertEquals(BilingualGenerationMode.AUTO, BilingualSettingsCodec.decode("{\"mode\":\"bilingual\"}").generationMode)
     }
+
+    @Test fun `an auto-picked addon subtitle never beats the file's own embedded track`() {
+        val addonEn = SubtitleCandidate("addon-en", "en", "English (OpenSubtitles)", false, false, false, null)
+        val plan = SmartBilingualPlanner.plan(input(addonEn, en, zhHans, selected = "addon-en", pinned = false))
+        plan as SmartPlan.MergeEmbedded
+        assertEquals("3", plan.primary.id)
+        // A subtitle the user picked by hand is still respected.
+        val pinned = SmartBilingualPlanner.plan(input(addonEn, en, zhHans, selected = "addon-en", pinned = true))
+        assertEquals("addon-en", (pinned as SmartPlan.AiTranslate).primary.id)
+    }
 }

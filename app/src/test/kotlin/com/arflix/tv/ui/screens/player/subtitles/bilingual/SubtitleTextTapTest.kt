@@ -128,6 +128,27 @@ class SubtitleTextTapTest {
         assertEquals(0, store.cueCount(3))
     }
 
+    @Test fun `a loader that starts before the player switches episodes keeps its cues in its own episode`() {
+        val store = EmbeddedSubtitleStore()
+        store.setActiveSource("ep1")
+        val e1 = SubtitleTapExtractorOutput(RecordingOutput(), store, "ep1").track(3, C.TRACK_TYPE_TEXT)
+        e1.subrip("3", "eng", "English")
+        writeSample(e1, 1_000, srtSample(1_000, "Episode one"), viaReader = false)
+        // Episode 2's extractor is already demuxing while episode 1 is still the active media.
+        val e2 = SubtitleTapExtractorOutput(RecordingOutput(), store, "ep2").track(3, C.TRACK_TYPE_TEXT)
+        e2.subrip("3", "eng", "English")
+        writeSample(e2, 1_000, srtSample(1_000, "Episode two"), viaReader = false)
+        assertEquals(listOf("Episode one"), store.cues(3).map { it.text })
+        store.setActiveSource("ep2")
+        assertEquals(listOf("Episode two"), store.cues(3).map { it.text })
+        // A late write from episode 1 never shows in episode 2.
+        writeSample(e1, 5_000, srtSample(1_000, "late ep1"), viaReader = false)
+        assertEquals(listOf("Episode two"), store.cues(3).map { it.text })
+        // Going back to episode 1 shows only its own lines.
+        store.setActiveSource("ep1")
+        assertEquals(listOf("Episode one", "late ep1"), store.cues(3).map { it.text })
+    }
+
     @Test fun `seek re-demux does not duplicate cues`() {
         val store = EmbeddedSubtitleStore()
         store.beginSource("s")

@@ -71,20 +71,20 @@ data class BilingualNotice(val kind: Kind, val detail: String = "", val id: Long
         get() = kind != Kind.MERGING_EMBEDDED && kind != Kind.AI_NO_SECONDARY_TRACK && kind != Kind.AI_FORCED
 
     fun message(): String = when (kind) {
-        Kind.MERGING_EMBEDDED -> "Bilingual: merging embedded $detail subtitles (no AI)"
-        Kind.MERGING_AMBIGUOUS_SCRIPT -> "Bilingual: merging $detail — the track doesn't say Simplified or Traditional"
-        Kind.AI_NO_SECONDARY_TRACK -> "Bilingual: no embedded $detail track — translating with AI"
-        Kind.AI_SECONDARY_UNRELIABLE -> "Bilingual: embedded $detail track doesn't line up — switched to AI translation"
-        Kind.AI_SECONDARY_IMAGE_ONLY -> "Bilingual: embedded $detail track is an image subtitle — translating with AI"
-        Kind.PRIMARY_ONLY_NO_AI -> "Bilingual: no embedded $detail track and no AI key — showing one language. Add a Gemini/Groq key to translate."
-        Kind.PRIMARY_ONLY_UNRELIABLE_NO_AI -> "Bilingual: embedded $detail track doesn't line up and no AI key is set — showing one language"
-        Kind.SAME_LANGUAGE -> "Bilingual: primary and secondary are both $detail — choose a different language in Bilingual settings"
-        Kind.NO_TEXT_SUBTITLE -> "Bilingual: this video has no readable text subtitle (image subtitles can't be used)"
-        Kind.USER_PICK_RESPECTED -> "Bilingual: keeping the subtitle you picked"
-        Kind.MERGE_NO_SECONDARY -> "Merge mode: no embedded $detail text track to merge (AI is off in this mode). Pick the tracks in Subtitles → Bilingual Subtitles."
-        Kind.MERGE_UNRELIABLE -> "Merge mode: the $detail track doesn't line up with the primary (AI is off in this mode). Pick other tracks in Subtitles → Bilingual Subtitles."
-        Kind.AI_FORCED -> "AI Translate mode: translating into $detail"
-        Kind.AI_NOT_CONFIGURED -> "AI Translate mode needs a Gemini/Groq key (Settings → AI Subtitles) — showing one language"
+        Kind.MERGING_EMBEDDED -> bt("Bilingual: merging embedded %s subtitles (no AI)").format(detail)
+        Kind.MERGING_AMBIGUOUS_SCRIPT -> bt("Bilingual: merging %s — the track doesn't say Simplified or Traditional").format(detail)
+        Kind.AI_NO_SECONDARY_TRACK -> bt("Bilingual: no embedded %s track — translating with AI").format(detail)
+        Kind.AI_SECONDARY_UNRELIABLE -> bt("Bilingual: embedded %s track doesn't line up — switched to AI translation").format(detail)
+        Kind.AI_SECONDARY_IMAGE_ONLY -> bt("Bilingual: embedded %s track is an image subtitle — translating with AI").format(detail)
+        Kind.PRIMARY_ONLY_NO_AI -> bt("Bilingual: no embedded %s track and no AI key — showing one language. Add a Gemini/Groq key to translate.").format(detail)
+        Kind.PRIMARY_ONLY_UNRELIABLE_NO_AI -> bt("Bilingual: embedded %s track doesn't line up and no AI key is set — showing one language").format(detail)
+        Kind.SAME_LANGUAGE -> bt("Bilingual: primary and secondary are both %s — choose a different language in Bilingual settings").format(detail)
+        Kind.NO_TEXT_SUBTITLE -> bt("Bilingual: this video has no readable text subtitle (image subtitles can't be used)")
+        Kind.USER_PICK_RESPECTED -> bt("Bilingual: keeping the subtitle you picked")
+        Kind.MERGE_NO_SECONDARY -> bt("Merge mode: no embedded %s text track to merge (AI is off in this mode). Pick the tracks in Subtitles → Bilingual Subtitles.").format(detail)
+        Kind.MERGE_UNRELIABLE -> bt("Merge mode: the %s track doesn't line up with the primary (AI is off in this mode). Pick other tracks in Subtitles → Bilingual Subtitles.").format(detail)
+        Kind.AI_FORCED -> bt("AI Translate mode: translating into %s").format(detail)
+        Kind.AI_NOT_CONFIGURED -> bt("AI Translate mode needs a Gemini/Groq key (Settings → AI Subtitles) — showing one language")
     }
 
     private companion object {
@@ -211,8 +211,23 @@ object SmartBilingualPlanner {
             rank(amb.filter { !it.isForced }).firstOrNull()?.let { return it }
             // Explicit language not available: fall through to Auto rather than show nothing.
         }
-        if (selected != null && !selected.isForced && selected in notSecondary) return selected
         val audio = SubtitleLanguage.parse(input.audioLanguageTag)
+        if (selected != null && !selected.isForced && selected in notSecondary) {
+            if (selected.isEmbedded) return selected
+            // The player auto-picked an ADDON subtitle. Addon results are matched by title and
+            // are often from another episode/release; the file's own embedded track is always in
+            // sync with this video, so prefer it whenever one exists.
+            val embedded = notSecondary.filter { it.isEmbedded && !it.isForced }
+            if (embedded.isEmpty()) return selected
+            rank(embedded.filter { SubtitleLanguageMatcher.match(it.language, selected.language) != LanguageMatch.NONE })
+                .firstOrNull()?.let { return it }
+            if (audio != null) {
+                rank(embedded.filter { SubtitleLanguageMatcher.match(it.language, audio) != LanguageMatch.NONE })
+                    .firstOrNull()?.let { return it }
+            }
+            rank(embedded.filter { it.language?.base == "en" }).firstOrNull()?.let { return it }
+            return rank(embedded).first()
+        }
         if (audio != null) {
             rank(notSecondary.filter { !it.isForced && SubtitleLanguageMatcher.match(it.language, audio) != LanguageMatch.NONE })
                 .firstOrNull()?.let { return it }

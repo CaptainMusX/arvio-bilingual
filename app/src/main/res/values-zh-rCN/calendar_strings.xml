@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_calendar">日历</string>
+    <string name="calendar_all_watchlists">所有片单</string>
+    <string name="calendar_arvio_watchlist">ARVIO 片单</string>
+    <string name="calendar_today">今天</string>
+    <string name="calendar_local_time">本地时间</string>
+    <string name="calendar_time_tba">时间待定</string>
+    <string name="calendar_next_month">下个月</string>
+    <string name="calendar_previous_month">上个月</string>
+    <string name="calendar_release">部上映</string>
+    <string name="calendar_releases">部上映</string>
+    <string name="calendar_more">更多</string>
+    <string name="calendar_navigate_days">切换日期</string>
+    <string name="calendar_open_day">打开当天</string>
+    <string name="calendar_partial">部分来源不可用</string>
+    <string name="calendar_loading">正在查找你的上映信息…</string>
+    <string name="calendar_unavailable">日历不可用</string>
+    <string name="calendar_incomplete">上映时间表不完整</string>
+    <string name="calendar_empty_watchlist">你的片单，按日历展示</string>
+    <string name="calendar_empty_day">这一天没有上映内容</string>
+    <string name="calendar_add_watchlist">把电影和剧集加入你的 ARVIO 片单，无需追踪账号。</string>
+    <string name="calendar_choose_day">选择其他日期或片单，查看即将上映的内容。</string>
+    <string name="calendar_cinema">影院</string>
+    <string name="calendar_digital">数字版</string>
+    <string name="calendar_physical">实体版</string>
+    <string name="calendar_next_release">下一次上映</string>
+    <string name="calendar_partial_details">部分上映详情不可用</string>
+    <string name="calendar_refresh">刷新日历</string>
+</resources>

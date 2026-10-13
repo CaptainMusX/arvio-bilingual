@@ -41,15 +41,15 @@ fun BilingualSettingsEntry() {
     val settings by store.settings.collectAsState()
     var open by rememberSaveable { mutableStateOf(false) }
 
-    MobileSettingsCategory(title = "BILINGUAL SUBTITLES") {
+    MobileSettingsCategory(title = bt("BILINGUAL SUBTITLES")) {
         MobileSettingsRow(
             icon = Icons.Default.Subtitles,
-            title = "Bilingual Subtitles",
-            subtitle = "Generation mode (Auto / Merge / AI Translate), languages, display mode, styles",
-            value = if (!settings.smartEnabled) "Off" else when (settings.generationMode) {
-                BilingualGenerationMode.AUTO -> "Auto"
-                BilingualGenerationMode.MERGE -> "Merge"
-                BilingualGenerationMode.AI_TRANSLATE -> "AI Translate"
+            title = bt("Bilingual Subtitles"),
+            subtitle = bt("Generation mode (Auto / Merge / AI Translate), languages, display mode, styles"),
+            value = if (!settings.smartEnabled) bt("Off") else when (settings.generationMode) {
+                BilingualGenerationMode.AUTO -> bt("Auto")
+                BilingualGenerationMode.MERGE -> bt("Merge")
+                BilingualGenerationMode.AI_TRANSLATE -> bt("AI Translate")
             },
             isToggle = false,
             showDivider = false,
@@ -76,7 +76,7 @@ fun BilingualSettingsEntry() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Bilingual Subtitles",
+                            bt("Bilingual Subtitles"),
                             color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -84,7 +84,7 @@ fun BilingualSettingsEntry() {
                         )
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
+                            contentDescription = bt("Close"),
                             tint = Color.White,
                             modifier = Modifier
                                 .clickable { open = false }

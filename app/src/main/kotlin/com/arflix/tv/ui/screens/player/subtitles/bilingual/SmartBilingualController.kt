@@ -129,8 +129,8 @@ fun SmartBilingualController(
         BilingualPlayerBridge.tracks.value = candidates.filter { it.isText }.map { c ->
             BilingualPlayerBridge.TrackChoice(
                 id = c.id,
-                label = listOfNotNull(c.language?.displayName, c.label?.takeIf { it.isNotBlank() && it != c.language?.displayName })
-                    .joinToString(" · ").ifBlank { c.id } + if (c.isEmbedded) "" else " (addon)",
+                label = listOfNotNull(c.language?.localName, c.label?.takeIf { it.isNotBlank() && it != c.language?.localName })
+                    .joinToString(" · ").ifBlank { c.id } + if (c.isEmbedded) "" else bt(" (addon)"),
                 mergeable = c.isEmbedded && c.tapTrackId != null,
             )
         }
@@ -185,7 +185,7 @@ fun SmartBilingualController(
                 activeSecondaryId = plan.secondary.id
                 viewModel.activateSmartBilingualMerge(primary)
                 manager.secondarySource = source
-                val names = "${plan.primaryLanguage?.displayName ?: primary.label} + ${plan.secondaryLanguage.displayName}"
+                val names = "${plan.primaryLanguage?.localName ?: primary.label} + ${plan.secondaryLanguage.localName}"
                 notice(
                     if (plan.ambiguousScript) BilingualNotice.Kind.MERGING_AMBIGUOUS_SCRIPT else BilingualNotice.Kind.MERGING_EMBEDDED,
                     if (plan.ambiguousScript) "${plan.secondary.label ?: plan.secondary.languageTag}" else names,
@@ -196,15 +196,15 @@ fun SmartBilingualController(
                 val primary = byId[plan.primary.id] ?: return@LaunchedEffect
                 activeSecondaryId = null
                 viewModel.activateSmartBilingualAi(primary, plan.target.translationTargetName)
-                notice(plan.why, plan.target.displayName, "ai:${plan.primary.id}:${plan.target.tag}:${plan.why}")
+                notice(plan.why, plan.target.localName, "ai:${plan.primary.id}:${plan.target.tag}:${plan.why}")
             }
             is SmartPlan.PrimaryOnly -> {
                 val primary = byId[plan.primary.id] ?: return@LaunchedEffect
                 activeSecondaryId = null
                 viewModel.activateSmartBilingualPrimaryOnly(primary)
                 val detail = if (plan.why == BilingualNotice.Kind.SAME_LANGUAGE) {
-                    plan.primary.language?.displayName ?: settings.secondary.displayName
-                } else settings.secondary.displayName
+                    plan.primary.language?.localName ?: settings.secondary.localName
+                } else settings.secondary.localName
                 notice(plan.why, detail, "primary:${plan.primary.id}:${plan.why}:${settings.secondaryLanguage}")
             }
             is SmartPlan.Unavailable -> {
@@ -248,15 +248,15 @@ internal fun buildCandidates(subtitles: List<Subtitle>, store: EmbeddedSubtitleS
 /** One line for the panel: what the bilingual layer is doing now. */
 internal fun describe(plan: SmartPlan, mode: BilingualGenerationMode): String {
     val m = when (mode) {
-        BilingualGenerationMode.AUTO -> "Auto"
-        BilingualGenerationMode.MERGE -> "Merge"
-        BilingualGenerationMode.AI_TRANSLATE -> "AI Translate"
+        BilingualGenerationMode.AUTO -> bt("Auto")
+        BilingualGenerationMode.MERGE -> bt("Merge")
+        BilingualGenerationMode.AI_TRANSLATE -> bt("AI Translate")
     }
-    fun name(c: SubtitleCandidate) = c.language?.displayName ?: c.label ?: c.id
+    fun name(c: SubtitleCandidate) = c.language?.localName ?: c.label ?: c.id
     return when (plan) {
-        is SmartPlan.MergeEmbedded -> "$m · merging ${name(plan.primary)} + ${name(plan.secondary)} (no AI)"
-        is SmartPlan.AiTranslate -> "$m · ${name(plan.primary)} + AI ${plan.target.displayName}"
-        is SmartPlan.PrimaryOnly -> "$m · ${name(plan.primary)} only — ${BilingualNotice(plan.why).message()}"
+        is SmartPlan.MergeEmbedded -> bt("%s · merging %s + %s (no AI)").format(m, name(plan.primary), name(plan.secondary))
+        is SmartPlan.AiTranslate -> bt("%s · %s + AI %s").format(m, name(plan.primary), plan.target.localName)
+        is SmartPlan.PrimaryOnly -> bt("%s · %s only — %s").format(m, name(plan.primary), BilingualNotice(plan.why).message())
         is SmartPlan.Unavailable -> "$m · ${BilingualNotice(plan.why).message()}"
     }
 }

@@ -47,8 +47,19 @@ class EmbeddedSubtitleStore {
     }
 
     private val lock = Any()
+    /** Key of the media the player is playing now; every read is scoped to it. */
     private var sourceKey: String? = null
-    private val tracks = LinkedHashMap<Int, TrackData>()
+    /**
+     * Per-source track data. Writes always land in the bucket of the media their extractor is
+     * reading (its own URI), never the "current" one, so a loader still running for the previous
+     * episode — or one that starts before the UI learned the new URL — can't mix its cues into
+     * another episode. A few recent sources are kept so switching back is instant.
+     */
+    private val sources = object : LinkedHashMap<String, LinkedHashMap<Int, TrackData>>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LinkedHashMap<Int, TrackData>>?): Boolean =
+            size > MAX_SOURCES
+    }
+    private val tracks: Map<Int, TrackData> get() = sources[sourceKey ?: NO_KEY] ?: emptyMap()
     private val versionCounter = AtomicLong(0)
 
     /** Increments on every change; cheap staleness check for cached alignments. */
@@ -56,27 +67,37 @@ class EmbeddedSubtitleStore {
 
     fun currentSourceKey(): String? = synchronized(lock) { sourceKey }
 
-    /** Starts (or keeps) the store for [key]. A different key clears all tracks and cues. */
+    /** Makes [key] the media whose tracks and cues are read. Data of other sources is kept apart. */
     fun beginSource(key: String?): Unit = synchronized(lock) {
         if (key != sourceKey) {
             sourceKey = key
-            tracks.clear()
             versionCounter.incrementAndGet()
         }
     }
 
+    /** Same as [beginSource]; called by the player whenever its current media changes. */
+    fun setActiveSource(key: String?) = beginSource(key)
+
+    /** Drops data previously collected for [key] (e.g. the same URL re-opened for new content). */
+    fun resetSource(key: String?): Unit = synchronized(lock) {
+        if (sources.remove(key ?: NO_KEY) != null) versionCounter.incrementAndGet()
+    }
+
     fun clear(): Unit = synchronized(lock) {
-        tracks.clear()
+        sources.clear()
         sourceKey = null
         versionCounter.incrementAndGet()
     }
 
-    /** Ignored unless [forSource] is the current source (late writes from a previous stream). */
+    private fun bucket(forSource: String?): LinkedHashMap<Int, TrackData> =
+        sources.getOrPut(forSource ?: NO_KEY) { LinkedHashMap() }
+
+    /** Registers a text track of the media [forSource] (its extractor's own URI). */
     fun onTrack(forSource: String?, info: EmbeddedTextTrack): Unit = synchronized(lock) {
-        if (forSource != sourceKey) return
-        val existing = tracks[info.trackId]
-        if (existing == null) tracks[info.trackId] = TrackData(info) else existing.info = info
-        versionCounter.incrementAndGet()
+        val b = bucket(forSource)
+        val existing = b[info.trackId]
+        if (existing == null) b[info.trackId] = TrackData(info) else existing.info = info
+        if (forSource == sourceKey) versionCounter.incrementAndGet()
     }
 
     /**
@@ -84,8 +105,8 @@ class EmbeddedSubtitleStore {
      * Duplicates (the same span re-demuxed after a seek) are dropped.
      */
     fun onCue(forSource: String?, trackId: Int, startMs: Long, endMs: Long?, text: String): Unit = synchronized(lock) {
-        if (forSource != sourceKey) return
-        val track = tracks[trackId] ?: return
+        val track = sources[forSource ?: NO_KEY]?.get(trackId) ?: return
+        val visible = forSource == sourceKey
         val clean = text.trim()
         // An empty cue in "replace" style formats only ends the previous one.
         track.openCue?.let { open ->
@@ -94,7 +115,7 @@ class EmbeddedSubtitleStore {
             }
             track.openCue = null
         }
-        if (clean.isEmpty()) { versionCounter.incrementAndGet(); return }
+        if (clean.isEmpty()) { if (visible) versionCounter.incrementAndGet(); return }
         val end = endMs?.takeIf { it > startMs } ?: (startMs + UNKNOWN_END_CAP_MS)
         val cue = TimedText(startMs, end, clean)
         val bucket = track.cues.getOrPut(startMs) { mutableListOf() }
@@ -111,7 +132,7 @@ class EmbeddedSubtitleStore {
         bucket += cue
         track.count++
         if (endMs == null) track.openCue = cue
-        versionCounter.incrementAndGet()
+        if (visible) versionCounter.incrementAndGet()
     }
 
     private fun replace(track: TrackData, old: TimedText, new: TimedText) {
@@ -137,6 +158,8 @@ class EmbeddedSubtitleStore {
 
     companion object {
         const val UNKNOWN_END_CAP_MS = 4_000L
+        private const val NO_KEY = "\u0000none"
+        private const val MAX_SOURCES = 4
         private const val MAX_CUE_LOOKBACK_MS = 30_000L
         private const val MAX_CUES_PER_TRACK = 20_000
     }

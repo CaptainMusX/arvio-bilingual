@@ -83,9 +83,9 @@ fun BilingualSubtitleSettingsPanel(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (!keyConfigured) {
-            Hint("No Gemini/Groq API key is set. Add it in Settings → AI Subtitles; until then only the original subtitle can be shown.")
+            Hint(bt("No Gemini/Groq API key is set. Add it in Settings → AI Subtitles; until then only the original subtitle can be shown."))
         } else if (aiAvailable == false) {
-            Hint("This video has no embedded text subtitle that AI can translate (image subtitles such as PGS can't be read). Pick another source or a normal subtitle track.")
+            Hint(bt("This video has no embedded text subtitle that AI can translate (image subtitles such as PGS can't be read). Pick another source or a normal subtitle track."))
         }
         if (onEnableAiTranslation != null && aiAvailable == true && !aiTranslating) {
             Row(
@@ -97,34 +97,33 @@ fun BilingualSubtitleSettingsPanel(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Turn on Bilingual AI Translation for this video", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(bt("Turn on Bilingual AI Translation for this video"), color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
-        val primaryName = settings.primaryExplicit?.displayName ?: "Primary"
-        val secondaryName = settings.secondary.displayName
+        val primaryName = settings.primaryExplicit?.localName ?: bt("Primary")
+        val secondaryName = settings.secondary.localName
 
         if (showPreview) Preview(settings)
 
         // ── Smart bilingual (source selection) ──────────────────────────────
-        SectionTitle("Bilingual subtitles")
+        SectionTitle(bt("Bilingual subtitles"))
         ToggleLine(
-            label = "Bilingual subtitles on",
+            label = bt("Bilingual subtitles on"),
             checked = settings.smartEnabled,
             onToggle = { on -> store.update { it.copy(smartEnabled = on) } }
         )
         Text(
-            "Shows two languages at once using the Generation mode below. Off = ARVIO's normal subtitles " +
-                "(a subtitle you pick from the normal list is always respected). Display mode further down is separate: it only decides which of the two lines are shown.",
+            bt("Shows two languages at once using the Generation mode below. Off = ARVIO's normal subtitles (a subtitle you pick from the normal list is always respected). Display mode further down is separate: it only decides which of the two lines are shown."),
             color = InkDim,
             fontSize = 11.sp
         )
-        SectionTitle("Generation mode")
+        SectionTitle(bt("Generation mode"))
         ChipRow(
             options = listOf(
-                BilingualGenerationMode.AUTO to "Auto",
-                BilingualGenerationMode.MERGE to "Merge",
-                BilingualGenerationMode.AI_TRANSLATE to "AI Translate",
+                BilingualGenerationMode.AUTO to bt("Auto"),
+                BilingualGenerationMode.MERGE to bt("Merge"),
+                BilingualGenerationMode.AI_TRANSLATE to bt("AI Translate"),
             ),
             selected = settings.generationMode,
             onSelect = { g ->
@@ -134,9 +133,9 @@ fun BilingualSubtitleSettingsPanel(
         )
         Text(
             when (settings.generationMode) {
-                BilingualGenerationMode.AUTO -> "Auto: merge two existing text subtitles when they line up (no AI); otherwise translate the missing language with Gemini/Groq."
-                BilingualGenerationMode.MERGE -> "Merge: only combine existing subtitle tracks. AI is never called — if a language is missing you'll get a notice and can pick tracks below."
-                BilingualGenerationMode.AI_TRANSLATE -> "AI Translate: always translate the primary track with Gemini/Groq, even if the other language exists. On API errors the primary stays on screen."
+                BilingualGenerationMode.AUTO -> bt("Auto: merge two existing text subtitles when they line up (no AI); otherwise translate the missing language with Gemini/Groq.")
+                BilingualGenerationMode.MERGE -> bt("Merge: only combine existing subtitle tracks. AI is never called — if a language is missing you'll get a notice and can pick tracks below.")
+                BilingualGenerationMode.AI_TRANSLATE -> bt("AI Translate: always translate the primary track with Gemini/Groq, even if the other language exists. On API errors the primary stays on screen.")
             },
             color = InkDim,
             fontSize = 11.sp
@@ -148,16 +147,16 @@ fun BilingualSubtitleSettingsPanel(
             val primaryOverride by BilingualPlayerBridge.primaryOverride.collectAsState()
             val secondaryOverride by BilingualPlayerBridge.secondaryOverride.collectAsState()
             if (tracks.isNotEmpty()) {
-                Text("Primary track (this video)", color = Ink, fontSize = 13.sp)
+                Text(bt("Primary track (this video)"), color = Ink, fontSize = 13.sp)
                 ChipRow(
-                    options = listOf<String?>(null).map { it to "Automatic" } + tracks.map { it.id to it.label },
+                    options = listOf<String?>(null).map { it to bt("Automatic") } + tracks.map { it.id to it.label },
                     selected = primaryOverride,
                     onSelect = { id -> BilingualPlayerBridge.primaryOverride.value = id; BilingualPlayerBridge.requestSmartMode() }
                 )
                 if (settings.generationMode != BilingualGenerationMode.AI_TRANSLATE) {
-                    Text("Secondary track to merge (this video)", color = Ink, fontSize = 13.sp)
+                    Text(bt("Secondary track to merge (this video)"), color = Ink, fontSize = 13.sp)
                     ChipRow(
-                        options = listOf<String?>(null).map { it to "Automatic" } +
+                        options = listOf<String?>(null).map { it to bt("Automatic") } +
                             tracks.filter { it.mergeable }.map { it.id to it.label },
                         selected = secondaryOverride,
                         onSelect = { id -> BilingualPlayerBridge.secondaryOverride.value = id; BilingualPlayerBridge.requestSmartMode() }
@@ -175,88 +174,88 @@ fun BilingualSubtitleSettingsPanel(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Turn on bilingual for this video", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(bt("Turn on bilingual for this video"), color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-        Text("Primary subtitle language", color = Ink, fontSize = 13.sp)
+        Text(bt("Primary subtitle language"), color = Ink, fontSize = 13.sp)
         ChipRow(
-            options = listOf(SubtitleLanguage.AUTO to "Auto") +
-                SubtitleLanguage.PICKER_OPTIONS.map { it.tag to it.displayName },
+            options = listOf(SubtitleLanguage.AUTO to bt("Auto")) +
+                SubtitleLanguage.PICKER_OPTIONS.map { it.tag to it.localName },
             selected = settings.primaryExplicit?.tag ?: SubtitleLanguage.AUTO,
             onSelect = { tag -> store.update { it.copy(primaryLanguage = tag) } }
         )
-        Text("Secondary subtitle language", color = Ink, fontSize = 13.sp)
+        Text(bt("Secondary subtitle language"), color = Ink, fontSize = 13.sp)
         ChipRow(
-            options = SubtitleLanguage.PICKER_OPTIONS.map { it.tag to it.displayName },
+            options = SubtitleLanguage.PICKER_OPTIONS.map { it.tag to it.localName },
             selected = settings.secondary.tag,
             onSelect = { tag -> store.update { it.copy(secondaryLanguage = tag) } }
         )
         if (SubtitleLanguageMatcher.sameLanguage(settings.primaryExplicit, settings.secondary)) {
-            Hint("Primary and secondary are the same language — only one line would be shown. Pick a different secondary language.")
+            Hint(bt("Primary and secondary are the same language — only one line would be shown. Pick a different secondary language."))
         }
 
-        SectionTitle("Display mode")
+        SectionTitle(bt("Display mode"))
         ChipRow(
             options = listOf(
-                BilingualDisplayMode.BILINGUAL to "Bilingual",
-                BilingualDisplayMode.ORIGINAL_ONLY to "$primaryName only",
-                BilingualDisplayMode.TRANSLATION_ONLY to "$secondaryName only",
-                BilingualDisplayMode.OFF to "Off",
+                BilingualDisplayMode.BILINGUAL to bt("Bilingual"),
+                BilingualDisplayMode.ORIGINAL_ONLY to bt("%s only").format(primaryName),
+                BilingualDisplayMode.TRANSLATION_ONLY to bt("%s only").format(secondaryName),
+                BilingualDisplayMode.OFF to bt("Off"),
             ),
             selected = settings.mode,
             onSelect = { m -> store.update { it.copy(mode = m) } }
         )
 
-        SectionTitle("Basic")
+        SectionTitle(bt("Basic"))
         ChipRow(
             options = listOf(
-                BilingualOrder.ORIGINAL_FIRST to "$primaryName on top",
-                BilingualOrder.TRANSLATION_FIRST to "$secondaryName on top",
+                BilingualOrder.ORIGINAL_FIRST to bt("%s on top").format(primaryName),
+                BilingualOrder.TRANSLATION_FIRST to bt("%s on top").format(secondaryName),
             ),
             selected = settings.order,
             onSelect = { o -> store.update { it.copy(order = o) } }
         )
         LabeledSlider(
-            label = "Gap between languages",
+            label = bt("Gap between languages"),
             valueText = "${settings.gapDp} dp",
             value = settings.gapDp.toFloat(),
             range = 0f..BilingualSubtitleSettings.MAX_GAP_DP.toFloat(),
             onChange = { v -> store.update { it.copy(gapDp = v.roundToInt()) } }
         )
         LabeledSlider(
-            label = "Group position (from bottom)",
+            label = bt("Group position (from bottom)"),
             valueText = "${settings.bottomPercent}%",
             value = settings.bottomPercent.toFloat(),
             range = 0f..BilingualSubtitleSettings.MAX_BOTTOM_PERCENT.toFloat(),
             onChange = { v -> store.update { it.copy(bottomPercent = v.roundToInt()) } }
         )
         LabeledSlider(
-            label = "$primaryName size",
+            label = bt("%s size").format(primaryName),
             valueText = "${settings.original.sizeSp} sp",
             value = settings.original.sizeSp.toFloat(),
             range = BilingualLineStyle.MIN_SIZE_SP.toFloat()..BilingualLineStyle.MAX_SIZE_SP.toFloat(),
             onChange = { v -> store.update { it.copy(original = it.original.copy(sizeSp = v.roundToInt())) } }
         )
         LabeledSlider(
-            label = "$secondaryName size",
+            label = bt("%s size").format(secondaryName),
             valueText = "${settings.translation.sizeSp} sp",
             value = settings.translation.sizeSp.toFloat(),
             range = BilingualLineStyle.MIN_SIZE_SP.toFloat()..BilingualLineStyle.MAX_SIZE_SP.toFloat(),
             onChange = { v -> store.update { it.copy(translation = it.translation.copy(sizeSp = v.roundToInt())) } }
         )
         ColorPicker(
-            label = "$primaryName color",
+            label = bt("%s color").format(primaryName),
             hex = settings.original.colorHex,
             onPick = { h -> store.update { it.copy(original = it.original.copy(colorHex = h)) } }
         )
         ColorPicker(
-            label = "$secondaryName color",
+            label = bt("%s color").format(secondaryName),
             hex = settings.translation.colorHex,
             onPick = { h -> store.update { it.copy(translation = it.translation.copy(colorHex = h)) } }
         )
 
         ToggleLine(
-            label = "Advanced settings",
+            label = bt("Advanced settings"),
             checked = advanced,
             onToggle = { advanced = it }
         )
@@ -281,11 +280,10 @@ fun BilingualSubtitleSettingsPanel(
                 .clickable { store.resetToDefaults() }
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Text("Reset bilingual style to defaults", color = InkDim, fontSize = 13.sp)
+            Text(bt("Reset bilingual style to defaults"), color = InkDim, fontSize = 13.sp)
         }
         Text(
-            "Applies to the bilingual layer (Smart Bilingual or AI Translation). Normal subtitle tracks keep ARVIO's own subtitle style. " +
-                "ARVIO's own \"Secondary subtitle language\" (subtitle search filter) is a different setting.",
+            bt("Applies to the bilingual layer (Smart Bilingual or AI Translation). Normal subtitle tracks keep ARVIO's own subtitle style. ARVIO's own \"Secondary subtitle language\" (subtitle search filter) is a different setting."),
             color = InkDim,
             fontSize = 11.sp
         )
@@ -311,10 +309,10 @@ private fun Preview(settings: BilingualSubtitleSettings) {
             .clip(RoundedCornerShape(10.dp))
             .background(Brush.verticalGradient(listOf(Color(0xFF3A4A5C), Color(0xFF1B1F24))))
     ) {
-        Text("Preview", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp, modifier = Modifier.padding(8.dp))
+        Text(bt("Preview"), color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp, modifier = Modifier.padding(8.dp))
         if (blocks.isEmpty()) {
             Text(
-                "Subtitles off",
+                bt("Subtitles off"),
                 color = InkDim,
                 fontSize = 12.sp,
                 modifier = Modifier.align(Alignment.Center)
@@ -342,15 +340,15 @@ private fun LanguageSection(title: String, style: BilingualLineStyle, onChange: 
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(title, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        ToggleLine("Show", style.visible) { onChange(style.copy(visible = it)) }
+        ToggleLine(bt("Show"), style.visible) { onChange(style.copy(visible = it)) }
         LabeledSlider(
-            label = "Extra vertical offset",
+            label = bt("Extra vertical offset"),
             valueText = "${style.offsetDp} dp",
             value = style.offsetDp.toFloat(),
             range = -BilingualLineStyle.MAX_OFFSET_DP.toFloat()..BilingualLineStyle.MAX_OFFSET_DP.toFloat(),
             onChange = { onChange(style.copy(offsetDp = it.roundToInt())) }
         )
-        ToggleLine("Bold", style.bold) { onChange(style.copy(bold = it)) }
+        ToggleLine(bt("Bold"), style.bold) { onChange(style.copy(bold = it)) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -363,18 +361,18 @@ private fun LanguageSection(title: String, style: BilingualLineStyle, onChange: 
                 .padding(vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Font (tap to change)", color = Ink, fontSize = 13.sp)
+            Text(bt("Font (tap to change)"), color = Ink, fontSize = 13.sp)
             Text(SubtitleFontOption.fromPreference(style.font).preferenceValue, color = Accent, fontSize = 13.sp)
         }
-        Text("Outline", color = Ink, fontSize = 13.sp)
+        Text(bt("Outline"), color = Ink, fontSize = 13.sp)
         ChipRow(
             options = SubtitleOutline.entries.map { it to it.name.lowercase().replaceFirstChar { c -> c.uppercase() } },
             selected = style.outline,
             onSelect = { onChange(style.copy(outline = it)) }
         )
-        ColorPicker("Outline color", style.outlineColorHex) { onChange(style.copy(outlineColorHex = it)) }
-        ToggleLine("Shadow", style.shadow) { onChange(style.copy(shadow = it)) }
-        ToggleLine("Background box", style.background) { onChange(style.copy(background = it)) }
+        ColorPicker(bt("Outline color"), style.outlineColorHex) { onChange(style.copy(outlineColorHex = it)) }
+        ToggleLine(bt("Shadow"), style.shadow) { onChange(style.copy(shadow = it)) }
+        ToggleLine(bt("Background box"), style.background) { onChange(style.copy(background = it)) }
     }
 }
 

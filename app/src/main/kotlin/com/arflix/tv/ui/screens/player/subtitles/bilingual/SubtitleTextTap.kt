@@ -32,10 +32,12 @@ class SubtitleTextTapExtractorsFactory(
     private val currentSourceKey: () -> String?,
 ) : ExtractorsFactory {
 
-    override fun createExtractors(): Array<Extractor> = wrap(delegate.createExtractors())
+    override fun createExtractors(): Array<Extractor> = wrap(delegate.createExtractors(), null)
 
+    // Media3's progressive loader calls this overload with the URI it is actually reading: that
+    // URI, not the UI's idea of the current stream, keys the cues (no cross-episode mixing).
     override fun createExtractors(uri: Uri, responseHeaders: Map<String, List<String>>): Array<Extractor> =
-        wrap(delegate.createExtractors(uri, responseHeaders))
+        wrap(delegate.createExtractors(uri, responseHeaders), uri.toString())
 
     // Forward configuration so the wrapped factory keeps behaving exactly as before.
     override fun experimentalSetTextTrackTranscodingEnabled(textTrackTranscodingEnabled: Boolean): ExtractorsFactory {
@@ -53,21 +55,22 @@ class SubtitleTextTapExtractorsFactory(
         return this
     }
 
-    private fun wrap(extractors: Array<Extractor>): Array<Extractor> =
-        Array(extractors.size) { i -> SubtitleTapExtractor(extractors[i], store, currentSourceKey) }
+    private fun wrap(extractors: Array<Extractor>, uriKey: String?): Array<Extractor> =
+        Array(extractors.size) { i -> SubtitleTapExtractor(extractors[i], store, uriKey, currentSourceKey) }
 }
 
 @OptIn(UnstableApi::class)
 private class SubtitleTapExtractor(
     private val delegate: Extractor,
     private val store: EmbeddedSubtitleStore,
+    private val uriKey: String?,
     private val currentSourceKey: () -> String?,
 ) : Extractor {
     override fun sniff(input: ExtractorInput): Boolean = delegate.sniff(input)
     override fun getSniffFailureDetails(): List<SniffFailure> = delegate.sniffFailureDetails
     override fun init(output: ExtractorOutput) {
-        val key = runCatching { currentSourceKey() }.getOrNull()
-        store.beginSource(key)
+        // Writes go to this extractor's own media; the player decides which media is read.
+        val key = uriKey ?: runCatching { currentSourceKey() }.getOrNull()
         delegate.init(SubtitleTapExtractorOutput(output, store, key))
     }
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int = delegate.read(input, seekPosition)

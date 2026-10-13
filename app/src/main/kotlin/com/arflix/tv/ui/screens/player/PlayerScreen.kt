@@ -2420,6 +2420,9 @@ fun PlayerScreen(
                 exoPlayer.playWhenReady = false
             }
 
+            // ARVIO Bilingual: second-subtitle reads are scoped to exactly this media (keyed by
+            // the URI its extractor reads), so cues from another episode can never be merged in.
+            embeddedSubtitleStore.setActiveSource(mediaItem.localConfiguration?.uri?.toString())
             val resumePosition = uiState.savedPosition
             if (resumePosition > 0L) {
                 exoPlayer.setMediaSource(mediaSource, resumePosition)

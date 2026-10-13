@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="player_subtitle_hearing_sync">正在按语音同步字幕…</string>
+    <string name="player_audio_sync_listening">没有已验证的字幕，正在按音频同步…</string>
+    <string name="player_audio_sync_model_downloading">正在下载语音识别模型（%1$s MB）以加快字幕同步…</string>
+    <string name="player_audio_sync_live_only">此设备无法预读 %1$s 音频，改为按实时音频同步（较慢）</string>
+    <string name="player_audio_sync_withdrawn">无法确认字幕同步，已恢复原始时间轴</string>
+    <string name="player_audio_sync_estimated">正在按音频同步字幕（%1$s），微调中…</string>
+    <string name="player_audio_sync_synced">字幕同步已确认（%1$s）</string>
+    <string name="player_audio_sync_synced_rate">字幕同步已确认（%1$s，已校正帧率）</string>
+    <string name="player_audio_sync_adjusted">字幕时间轴已变化，已重新同步（%1$s）</string>
+    <string name="player_audio_sync_unsteady">音频同步不稳定，保留当前字幕时间轴</string>
+</resources>
