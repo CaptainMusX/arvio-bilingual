@@ -79,6 +79,16 @@ fun SmartBilingualController(
     LaunchedEffect(Unit) {
         BilingualPlayerBridge.requests.collect { viewModel.requestSmartBilingual() }
     }
+    LaunchedEffect(Unit) {
+        BilingualPlayerBridge.audioSyncRequests.collect {
+            BilingualPlayerBridge.audioSyncMessage.value = viewModel.syncSelectedSubtitleByAudio()
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        BilingualPlayerBridge.playerActive.value = true
+        BilingualPlayerBridge.audioSyncMessage.value = null
+        onDispose { BilingualPlayerBridge.playerActive.value = false }
+    }
     // A subtitle the user picks while bilingual is on becomes the new primary (re-planned below);
     // only turning subtitles Off from the menu pauses the bilingual layer for this video.
     val suspendedByUser = uiState.subtitleUserPickNonce != pickBaseline && uiState.selectedSubtitle == null

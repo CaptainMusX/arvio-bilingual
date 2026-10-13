@@ -35,6 +35,10 @@ class SubtitleTranslationManager(
         // No artificial rate limit needed — just don't fire concurrent requests.
         // If we get a 429, we back off 5s.
         private const val BATCH_WINDOW_MS = 150L  // wait up to 150ms for more items to batch
+        /** Earlier lines (with their translations) sent as read-only context per request. */
+        const val CONTEXT_LINES = 8
+        /** Lines per look-ahead request: big enough that fixed prompt overhead is small. */
+        const val CHUNK_LINES = 50
     }
 
     var isEnabled: Boolean = false
@@ -96,7 +100,7 @@ class SubtitleTranslationManager(
     suspend fun translateDetailed(text: String): Pair<String, Boolean> {
         val lang = targetLanguage
         val result = translate(text, lang)
-        val ok = cache.containsKey(cacheKey(lang, text))
+        val ok = cached(cacheKey(lang, text)) != null
         return result to ok
     }
 
@@ -120,6 +124,40 @@ class SubtitleTranslationManager(
         private set
 
     private val cache = ConcurrentHashMap<String, String>()
+
+    /** Persistent store behind [cache] (set by the player; null in tests). */
+    @Volatile var diskCache: TranslationDiskCache? = null
+        set(value) {
+            field = value
+            if (value != null) scope.launch(kotlinx.coroutines.Dispatchers.IO) { value.load() }
+        }
+
+    /** Title of what is playing ("Show S01E02 – Episode"), sent so the model knows the setting. */
+    @Volatile var contentTitle: String? = null
+
+    /** The latest translated lines in playback order (source → translation), sent as context. */
+    private val recent = ArrayDeque<Pair<String, String>>()
+    private val recentLock = Any()
+
+    private fun contextFor(batch: List<String>, lang: String): List<Pair<String, String>> = synchronized(recentLock) {
+        val skip = batch.toHashSet()
+        recent.filter { it.first !in skip && cache[cacheKey(lang, it.first)] != null }.takeLast(CONTEXT_LINES)
+    }
+
+    private fun remember(lang: String, pairs: List<Pair<String, String>>) {
+        synchronized(recentLock) {
+            pairs.forEach { recent.addLast(it) }
+            while (recent.size > CONTEXT_LINES * 2) recent.removeFirst()
+        }
+        diskCache?.let { disk ->
+            val entries = pairs.filter { it.first != it.second }.associate { cacheKey(lang, it.first) to it.second }
+            if (entries.isNotEmpty()) scope.launch(kotlinx.coroutines.Dispatchers.IO) { disk.putAll(entries) }
+        }
+    }
+
+    /** Memory first, then the persistent cache (promoted into memory). */
+    private fun cached(key: String): String? =
+        cache[key] ?: diskCache?.get(key)?.also { cache[key] = it }
     // Tracks texts currently queued but not yet translated, to avoid double-queuing the same text
     // from both the real-time path and preTranslateWindow racing on the same cue.
     private val inFlight = ConcurrentHashMap<String, CompletableDeferred<String>>()
@@ -171,7 +209,7 @@ class SubtitleTranslationManager(
             batch.retainAll(sameLang)
             val texts = batch.map { it.text }
             val result = try {
-                service.translateBatch(texts, lang)
+                service.translateBatch(texts, lang, contextFor(texts, lang), contentTitle)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -194,18 +232,21 @@ class SubtitleTranslationManager(
                 continue
             }
             onBatchResult?.invoke(true, null)
+            val pairs = ArrayList<Pair<String, String>>(batch.size)
             batch.forEachIndexed { i, item ->
                 val translated = result.lines.getOrElse(i) { item.text }
                 cache[cacheKey(item.lang, item.text)] = translated
                 inFlight.remove(cacheKey(item.lang, item.text))
                 item.deferred.complete(translated)
+                pairs += item.text to translated
             }
+            remember(lang, pairs)
             batch.clear()
         }
     }
 
     /** Cached translation of [text] into the CURRENT target language. */
-    fun getCached(text: String): String? = cache[cacheKey(targetLanguage, text)]
+    fun getCached(text: String): String? = cached(cacheKey(targetLanguage, text))
 
     fun isInFlight(text: String): Boolean = inFlight.containsKey(cacheKey(targetLanguage, text))
 
@@ -213,7 +254,7 @@ class SubtitleTranslationManager(
 
     private suspend fun translate(text: String, lang: String): String {
         val key = cacheKey(lang, text)
-        cache[key]?.let { return it }
+        cached(key)?.let { return it }
         // If the same text is already queued (e.g. preTranslateWindow raced us), join it.
         inFlight[key]?.let { return it.await() }
 
@@ -241,10 +282,15 @@ class SubtitleTranslationManager(
         }
     }
 
+    /**
+     * Clears what is on screen and what is queued. Translations stay cached: they are keyed by
+     * target language and source text, so they are valid for any track, episode or re-watch, and
+     * clearing them only paid for the same lines again.
+     */
     fun reset() {
         bilingualBus.clear()
-        cache.clear()
         inFlight.clear()
+        synchronized(recentLock) { recent.clear() }
         if (pendingCount.get() == 0) {
             isTranslating = false
             onTranslatingChanged?.invoke(false)
@@ -261,16 +307,30 @@ class SubtitleTranslationManager(
         // Path A (second embedded track) never translates.
         if (bilingualSource != BilingualSource.AI_TRANSLATION) return
         val lang = targetLanguage
-        val uncached = texts.filter { !cache.containsKey(cacheKey(lang, it)) && !inFlight.containsKey(cacheKey(lang, it)) }
+        val uncached = texts.distinct().filter { cached(cacheKey(lang, it)) == null && !inFlight.containsKey(cacheKey(lang, it)) }
         if (uncached.isEmpty()) return
-        uncached.chunked(40).forEach { chunk ->
-            val result = service.translateBatch(chunk, lang)
+        uncached.chunked(CHUNK_LINES).forEach { chunk ->
+            // Claim the lines so the real-time path joins this request instead of paying twice.
+            val claims = chunk.associateWith { CompletableDeferred<String>() }
+            claims.forEach { (t, d) -> inFlight.putIfAbsent(cacheKey(lang, t), d) }
+            val result = try {
+                service.translateBatch(chunk, lang, contextFor(chunk, lang), contentTitle)
+            } catch (e: CancellationException) {
+                claims.forEach { (t, d) -> inFlight.remove(cacheKey(lang, t), d); d.complete(t) }
+                throw e
+            }
             if (result.success) {
                 onBatchResult?.invoke(true, null)
+                val pairs = ArrayList<Pair<String, String>>(chunk.size)
                 chunk.forEachIndexed { i, text ->
-                    cache[cacheKey(lang, text)] = result.lines.getOrElse(i) { text }
+                    val tr = result.lines.getOrElse(i) { text }
+                    cache[cacheKey(lang, text)] = tr
+                    pairs += text to tr
                 }
+                remember(lang, pairs)
+                claims.forEach { (t, d) -> inFlight.remove(cacheKey(lang, t), d); d.complete(cache[cacheKey(lang, t)] ?: t) }
             } else {
+                claims.forEach { (t, d) -> inFlight.remove(cacheKey(lang, t), d); d.complete(t) }
                 onBatchResult?.invoke(false, result.errorMessage)
                 delay(5_000L)
                 return

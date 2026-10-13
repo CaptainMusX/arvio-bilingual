@@ -31,7 +31,7 @@ class SmartBilingualFlowTest {
 
     private fun countingService(prefix: (String) -> String = { lang -> "[$lang]" }): SubtitleTranslationService {
         val service = mockk<SubtitleTranslationService>()
-        coEvery { service.translateBatch(any(), any()) } coAnswers {
+        coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
             val lang = secondArg<String>()
             TranslationResult(lines = firstArg<List<String>>().map { "${prefix(lang)}$it" }, success = true)
         }
@@ -70,7 +70,7 @@ class SmartBilingualFlowTest {
         // Pre-translation is a no-op on this path too.
         manager.preTranslateWindow(listOf("EN line 20", "EN line 21"))
         delay(300)
-        coVerify(exactly = 0) { service.translateBatch(any(), any()) }
+        coVerify(exactly = 0) { service.translateBatch(any(), any(), any(), any()) }
         assertTrue(!manager.translationNeeded)
     }
 
@@ -128,12 +128,12 @@ class SmartBilingualFlowTest {
             while (manager.bilingualBus.frame.value?.translation == null) delay(20)
         }
         assertEquals("[Simplified Chinese]Hello there.", manager.bilingualBus.frame.value!!.translation)
-        coVerify(exactly = 1) { service.translateBatch(listOf("Hello there."), "Simplified Chinese") }
+        coVerify(exactly = 1) { service.translateBatch(listOf("Hello there."), "Simplified Chinese", any(), any()) }
     }
 
     @Test fun `translation failure keeps the original on screen`() = runBlocking {
         val service = mockk<SubtitleTranslationService>()
-        coEvery { service.translateBatch(any(), any()) } returns TranslationResult(emptyList(), false, "RATE_LIMITED")
+        coEvery { service.translateBatch(any(), any(), any(), any()) } returns TranslationResult(emptyList(), false, "RATE_LIMITED")
         val manager = SubtitleTranslationManager(service, "Simplified Chinese", scope).apply { isEnabled = true }
         BilingualCuePublisher(manager, scope).publish("Run!", 0)
         withTimeout(5_000) { while (manager.bilingualBus.frame.value?.translationFailed != true) delay(20) }
@@ -145,7 +145,7 @@ class SmartBilingualFlowTest {
     @Test fun `changing the target language isolates cache and drops in-flight results`() = runBlocking {
         val gate = CompletableDeferred<Unit>()
         val service = mockk<SubtitleTranslationService>()
-        coEvery { service.translateBatch(any(), any()) } coAnswers {
+        coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
             val lang = secondArg<String>()
             if (lang == "Simplified Chinese") gate.await()
             TranslationResult(firstArg<List<String>>().map { "[$lang]$it" }, true)
@@ -173,7 +173,7 @@ class SmartBilingualFlowTest {
     @Test fun `switching source or episode mid-translation never shows the old line`() = runBlocking {
         val gate = CompletableDeferred<Unit>()
         val service = mockk<SubtitleTranslationService>()
-        coEvery { service.translateBatch(any(), any()) } coAnswers {
+        coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
             gate.await(); TranslationResult(firstArg<List<String>>().map { "译:$it" }, true)
         }
         val manager = SubtitleTranslationManager(service, "Simplified Chinese", scope).apply { isEnabled = true }
@@ -203,7 +203,7 @@ class SmartBilingualFlowTest {
         assertEquals(enFirst.reversed(), zhFirst)
         assertEquals(BilingualRole.TRANSLATION, zhFirst.first().role)
         delay(200)
-        coVerify(exactly = 1) { service.translateBatch(any(), any()) }
+        coVerify(exactly = 1) { service.translateBatch(any(), any(), any(), any()) }
     }
 
     @Test fun `primary-only and secondary-only modes follow the configured roles`() {
@@ -219,14 +219,14 @@ class SmartBilingualFlowTest {
         val manager = SubtitleTranslationManager(service, "Simplified Chinese", scope) // isEnabled = false
         manager.preTranslateWindow(listOf("a", "b"))
         delay(200)
-        coVerify(exactly = 0) { service.translateBatch(any(), any()) }
+        coVerify(exactly = 0) { service.translateBatch(any(), any(), any(), any()) }
         assertTrue(!manager.translationNeeded)
     }
 
     @Test fun `switching generation path keeps the primary line on screen and drops stale results`() = runBlocking {
         val gate = CompletableDeferred<Unit>()
         val service = mockk<SubtitleTranslationService>()
-        coEvery { service.translateBatch(any(), any()) } coAnswers {
+        coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
             gate.await(); TranslationResult(firstArg<List<String>>().map { "译:$it" }, true)
         }
         val manager = SubtitleTranslationManager(service, "Simplified Chinese", scope).apply { isEnabled = true }
@@ -243,7 +243,7 @@ class SmartBilingualFlowTest {
         assertNull(manager.bilingualBus.frame.value!!.translation)  // AI result for the old path dropped
         publisher.publish("EN line 2", spanOf(2).first * 1000)
         assertEquals("中文 2", manager.bilingualBus.frame.value!!.translation)
-        coVerify(exactly = 1) { service.translateBatch(any(), any()) } // no second request
+        coVerify(exactly = 1) { service.translateBatch(any(), any(), any(), any()) } // no second request
     }
 
     @Test fun `AI Translate mode ignores an existing Chinese track and translates`() = runBlocking {

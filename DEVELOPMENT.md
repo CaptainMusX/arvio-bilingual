@@ -167,3 +167,10 @@ Tests: `app/src/test/kotlin/com/arflix/tv/ui/screens/player/subtitles/bilingual/
   flips to portrait or leaves the app locked in landscape (upstream bug).
 - **Loading speed**: OkHttp per-host limit 5 → 12, TMDB lanes 3/2/1 → 4/4/2, Search browse rows cached per
   type/genre/language and published row by row.
+
+## Round 6 (2.2-bilingual.3)
+- Cost: DeepSeek V4/V4.1 thinks by default and bills reasoning as output. `CustomAiWire.thinkingOff` turns reasoning off per provider (DeepSeek, GLM, Qwen/SiliconFlow, OpenRouter, OpenAI gpt-5/o-series, Gemini compat, Groq, Anthropic); an HTTP 400/422 retries once without it. Optional extra JSON body. `AiUsageMeter` shows tokens (incl. thinking) in settings.
+- Multiple saved services (`CustomAiProfiles`, prefs key `profiles_v2`, migrated from `config_v1`); editor uses a draft + explicit "Save and use"; built-in Gemini/Groq selectable.
+- Context-aware translation: look-ahead batches of 50 lines (`CHUNK_LINES`) with the last 8 translated lines + title as read-only context; system prompt constant for provider prefix caching.
+- Translations persist (`TranslationDiskCache`, cacheDir jsonl, 8 MB) and `reset()` no longer clears the cache.
+- Sync by hearing (on-device ASR) no longer disabled just because a custom model is active (needs AI auto-select to defer to AI). Manual "Sync subtitle to audio" in the bilingual panel for external subtitles.

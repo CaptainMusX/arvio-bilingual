@@ -198,6 +198,8 @@ fun BilingualSubtitleSettingsPanel(
 
         CustomAiSection(targetLanguageName = settings.secondary.translationTargetName)
 
+        AudioSyncSection()
+
         SectionTitle(bt("Display mode"))
         ChipRow(
             options = listOf(
@@ -538,4 +540,29 @@ object BilingualPlayerBridge {
     val secondaryOverride = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     /** What the bilingual layer is doing right now (one line, for the panel). */
     val status = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** "Sync to audio" taps from the panel; the player answers in [audioSyncMessage]. */
+    val audioSyncRequests = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val audioSyncMessage = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    /** True while a player is open (the panel hides player-only actions otherwise). */
+    val playerActive = kotlinx.coroutines.flow.MutableStateFlow(false)
+}
+
+/** "Sync subtitle to audio" — only inside the player (needs the playing stream). */
+@Composable
+private fun AudioSyncSection() {
+    val inPlayer by BilingualPlayerBridge.playerActive.collectAsState()
+    if (!inPlayer) return
+    val message by BilingualPlayerBridge.audioSyncMessage.collectAsState()
+    SectionTitle(bt("Subtitle timing"))
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFFF4D979).copy(alpha = 0.22f))
+            .clickable { BilingualPlayerBridge.audioSyncRequests.tryEmit(Unit) }
+            .padding(horizontal = 14.dp, vertical = 9.dp)
+    ) {
+        Text(bt("Sync subtitle to audio"), color = Color(0xFFF4D979), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    }
+    Hint(message?.let { bt(it) } ?: bt("Listens to the dialogue (on-device speech recognition, no API key) and shifts or re-times the external subtitle on screen. \"Find best match\" in the subtitle menu also does this automatically."))
 }

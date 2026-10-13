@@ -33,7 +33,7 @@ class BilingualTranslationManagerTest {
 
     @Test fun `concurrent requests for the same line hit the API once`() = runBlocking {
         val service = mockk<SubtitleTranslationService>()
-        coEvery { service.translateBatch(any(), any()) } coAnswers {
+        coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
             delay(100)
             TranslationResult(lines = firstArg<List<String>>().map { "译:$it" }, success = true)
         }
@@ -42,16 +42,16 @@ class BilingualTranslationManagerTest {
             (1..5).map { async { m.translateDetailed("Hello.") } }.awaitAll()
         }
         assertTrue(results.all { it == ("译:Hello." to true) })
-        coVerify(exactly = 1) { service.translateBatch(any(), any()) }
+        coVerify(exactly = 1) { service.translateBatch(any(), any(), any(), any()) }
         assertEquals("译:Hello.", m.getCached("Hello."))
         // Cached now: no further call.
         m.translateDetailed("Hello.")
-        coVerify(exactly = 1) { service.translateBatch(any(), any()) }
+        coVerify(exactly = 1) { service.translateBatch(any(), any(), any(), any()) }
     }
 
     @Test fun `api failure reports failed and does not cache`() = runBlocking {
         val service = mockk<SubtitleTranslationService>()
-        coEvery { service.translateBatch(any(), any()) } returns
+        coEvery { service.translateBatch(any(), any(), any(), any()) } returns
             TranslationResult(lines = emptyList(), success = false, errorMessage = "RATE_LIMITED")
         val m = manager(service)
         val (text, ok) = withTimeout(5_000) { m.translateDetailed("Run!") }
@@ -68,7 +68,7 @@ class BilingualTranslationManagerTest {
         m.preTranslateWindow(listOf("a", "b"))
         m.displayMode = BilingualDisplayMode.OFF
         m.preTranslateWindow(listOf("a", "b"))
-        coVerify(exactly = 0) { service.translateBatch(any(), any()) }
+        coVerify(exactly = 0) { service.translateBatch(any(), any(), any(), any()) }
     }
 
     @Test fun `turning translation off or resetting clears the on-screen frame`() {
@@ -80,5 +80,37 @@ class BilingualTranslationManagerTest {
         m.bilingualBus.showCue("y", "y", null)
         m.reset()
         assertNull(m.bilingualBus.frame.value)
+    }
+
+    @Test fun `look-ahead sends earlier lines as context and a reset keeps the cache`() = runBlocking {
+        val service = mockk<SubtitleTranslationService>()
+        val contexts = mutableListOf<List<Pair<String, String>>>()
+        coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
+            contexts += thirdArg<List<Pair<String, String>>>()
+            TranslationResult(lines = firstArg<List<String>>().map { "译:$it" }, success = true)
+        }
+        val m = manager(service)
+        m.contentTitle = "Show S01E01"
+        m.preTranslateWindow(listOf("One.", "Two.", "Three."))
+        m.preTranslateWindow(listOf("Four."))
+        assertTrue(contexts[0].isEmpty())
+        assertEquals(listOf("One." to "译:One.", "Two." to "译:Two.", "Three." to "译:Three."), contexts[1])
+        coVerify { service.translateBatch(listOf("Four."), "Simplified Chinese", any(), "Show S01E01") }
+        m.reset()
+        // Still cached after a reset (new track / episode): never paid for twice.
+        assertEquals("译:One.", m.getCached("One."))
+        m.preTranslateWindow(listOf("One.", "Two."))
+        coVerify(exactly = 2) { service.translateBatch(any(), any(), any(), any()) }
+    }
+
+    @Test fun `look-ahead batches are large so the fixed prompt is paid rarely`() = runBlocking {
+        val service = mockk<SubtitleTranslationService>()
+        coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
+            TranslationResult(lines = firstArg<List<String>>().map { "译:$it" }, success = true)
+        }
+        val m = manager(service)
+        m.preTranslateWindow((1..120).map { "Line $it." } + listOf("Line 1.", "Line 2."))
+        // 120 distinct lines → 3 requests of ≤ 50, duplicates never sent.
+        coVerify(exactly = 3) { service.translateBatch(any(), any(), any(), any()) }
     }
 }
