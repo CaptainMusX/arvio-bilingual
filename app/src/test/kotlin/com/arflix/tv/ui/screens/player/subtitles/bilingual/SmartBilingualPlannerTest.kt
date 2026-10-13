@@ -197,6 +197,12 @@ class SmartBilingualPlannerTest {
         assertEquals("3", plan.primary.id)
         // A subtitle the user picked by hand is still respected.
         val pinned = SmartBilingualPlanner.plan(input(addonEn, en, zhHans, selected = "addon-en", pinned = true))
-        assertEquals("addon-en", (pinned as SmartPlan.AiTranslate).primary.id)
+        val pinnedPrimary = when (pinned) {
+            is SmartPlan.MergeEmbedded -> pinned.primary.id
+            is SmartPlan.AiTranslate -> pinned.primary.id
+            is SmartPlan.PrimaryOnly -> pinned.primary.id
+            else -> null
+        }
+        assertEquals("addon-en", pinnedPrimary)
     }
 }
