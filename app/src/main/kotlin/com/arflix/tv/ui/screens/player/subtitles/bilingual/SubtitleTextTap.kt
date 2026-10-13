@@ -116,22 +116,34 @@ internal class SubtitleTapTrackOutput(
 
     override fun format(format: Format) {
         this.format = format
-        decoder = SubtitleSampleDecoder.forFormat(format.sampleMimeType, format.codecs)
+        onFormatInfo(
+            formatId = format.id,
+            mimeType = format.sampleMimeType,
+            codecs = format.codecs,
+            language = format.language,
+            label = format.label,
+            forced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
+        )
+        delegate.format(format)
+    }
+
+    /** The part of [format] the tap needs (separate so it is testable without android.* classes). */
+    internal fun onFormatInfo(formatId: String?, mimeType: String?, codecs: String?, language: String?, label: String?, forced: Boolean) {
+        decoder = SubtitleSampleDecoder.forFormat(mimeType, codecs)
         runCatching {
             store.onTrack(
                 sourceKey,
                 EmbeddedTextTrack(
                     trackId = trackId,
-                    formatId = format.id,
-                    languageTag = format.language,
-                    label = format.label,
-                    mimeType = format.sampleMimeType,
-                    codecs = format.codecs,
-                    isForced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
+                    formatId = formatId,
+                    languageTag = language,
+                    label = label,
+                    mimeType = mimeType,
+                    codecs = codecs,
+                    isForced = forced,
                 )
             )
         }
-        delegate.format(format)
     }
 
     override fun durationUs(durationUs: Long) = delegate.durationUs(durationUs)

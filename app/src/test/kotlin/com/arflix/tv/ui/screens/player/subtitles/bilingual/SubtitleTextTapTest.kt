@@ -2,7 +2,6 @@ package com.arflix.tv.ui.screens.player.subtitles.bilingual
 
 import androidx.media3.common.C
 import androidx.media3.common.DataReader
-import androidx.media3.common.Format
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.extractor.ExtractorOutput
 import androidx.media3.extractor.SeekMap
@@ -23,8 +22,7 @@ class SubtitleTextTapTest {
     private class RecordingTrackOutput : TrackOutput {
         val bytes = java.io.ByteArrayOutputStream()
         val samples = mutableListOf<Pair<Long, Int>>()
-        var format: Format? = null
-        override fun format(format: Format) { this.format = format }
+        override fun format(format: androidx.media3.common.Format) {}
         override fun sampleData(input: DataReader, length: Int, allowEndOfInput: Boolean, sampleDataPart: Int): Int {
             val buf = ByteArray(length)
             val n = input.read(buf, 0, length)
@@ -47,10 +45,10 @@ class SubtitleTextTapTest {
         override fun seekMap(seekMap: SeekMap) {}
     }
 
-    // No label: Format's label handling calls android.text.TextUtils (not available on the plain JVM).
-    @Suppress("UNUSED_PARAMETER")
-    private fun subripFormat(id: String, lang: String, label: String) = Format.Builder()
-        .setId(id).setSampleMimeType("application/x-subrip").setLanguage(lang).build()
+    // Media3's Format needs android.* classes, so the test feeds the tap's format hook directly
+    // (format() forwards exactly these fields to it).
+    private fun TrackOutput.subrip(id: String, lang: String, label: String) =
+        (this as SubtitleTapTrackOutput).onFormatInfo(id, "application/x-subrip", null, lang, label, forced = false)
 
     /** Matroska SubRip sample: timing prefix with the block duration, then the text. */
     private fun srtSample(durationMs: Long, text: String): ByteArray {
@@ -88,9 +86,8 @@ class SubtitleTextTapTest {
         val video = output.track(1, C.TRACK_TYPE_VIDEO)
         val enOut = output.track(3, C.TRACK_TYPE_TEXT)
         val zhOut = output.track(4, C.TRACK_TYPE_TEXT)
-        video.format(Format.Builder().setId("1").setSampleMimeType("video/avc").build())
-        enOut.format(subripFormat("3", "eng", "English"))
-        zhOut.format(subripFormat("4", "zh-Hans", "简体中文"))
+        enOut.subrip("3", "eng", "English")
+        zhOut.subrip("4", "chi", "简体中文")
 
         val enSample = srtSample(2_500, "<i>Hello there.</i>")
         val zhSample = srtSample(1_200, "你好。")
@@ -120,7 +117,7 @@ class SubtitleTextTapTest {
         store.beginSource("ep1")
         val out1 = SubtitleTapExtractorOutput(RecordingOutput(), store, "ep1")
         val t1 = out1.track(3, C.TRACK_TYPE_TEXT)
-        t1.format(subripFormat("3", "eng", "English"))
+        t1.subrip("3", "eng", "English")
         writeSample(t1, 1_000, srtSample(1_000, "Episode one"), viaReader = false)
         assertEquals(1, store.cueCount(3))
 
@@ -135,7 +132,7 @@ class SubtitleTextTapTest {
         val store = EmbeddedSubtitleStore()
         store.beginSource("s")
         val out = SubtitleTapExtractorOutput(RecordingOutput(), store, "s").track(3, C.TRACK_TYPE_TEXT)
-        out.format(subripFormat("3", "eng", "English"))
+        out.subrip("3", "eng", "English")
         repeat(2) { writeSample(out, 5_000, srtSample(1_000, "Same line"), viaReader = false) }
         assertEquals(1, store.cueCount(3))
     }
