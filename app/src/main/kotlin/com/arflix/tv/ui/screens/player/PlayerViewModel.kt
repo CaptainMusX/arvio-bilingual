@@ -368,6 +368,33 @@ class PlayerViewModel @Inject constructor(
     // No automatic path (scan verdict, remembered match, late addon pick, AI source re-resolve)
     // may swap it for another track — AI translation then always translates this exact track.
     private var userLockedSubtitleId: String? = null
+
+    init {
+        // Last line of defence for the lock above: several upstream paths (scan verdicts, restores,
+        // reference switches) write selectedSubtitle directly instead of going through
+        // selectSubtitle. Whatever path it was, a different track replacing the user's own pick
+        // is put back at once (and AI translation keeps translating the user's track).
+        viewModelScope.launch {
+            _uiState.collect { st -> enforceUserSubtitleLock(st) }
+        }
+    }
+
+    private fun enforceUserSubtitleLock(st: PlayerUiState) {
+        val locked = userLockedSubtitleId ?: return
+        val sel = st.selectedSubtitle ?: return
+        if (sel.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX) == locked) return
+        if (st.isLiveAudioTranslating) return
+        val mine = st.subtitles.firstOrNull { it.id == locked } ?: return
+        Log.w("SubMatch", "lock: \"${sel.label}\" (${sel.provider}) replaced the user's \"${mine.label}\" - restoring it")
+        if (st.isAiTranslating) {
+            aiSourceSubtitle = mine
+            translationManager.reset()
+        }
+        _uiState.value = st.copy(
+            selectedSubtitle = mine,
+            subtitleSelectionNonce = st.subtitleSelectionNonce + 1
+        )
+    }
     private var playbackSessionStartTime: Long = 0L
     private val recentSourcePlayTracker = RecentSourcePlayTracker()
     private var recentSourceLoad: Deferred<RecentPlayedSource?>? = null
@@ -3516,6 +3543,9 @@ class PlayerViewModel @Inject constructor(
                 null
             }
 
+            if (selected != null && resolvedSelected != null && resolvedSelected.id != selected.id &&
+                userLockedSubtitleId == selected.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
+            ) userLockedSubtitleId = resolvedSelected.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
             _uiState.value = _uiState.value.copy(
                 subtitles = finalList,
                 selectedSubtitle = resolvedSelected
@@ -3597,7 +3627,11 @@ class PlayerViewModel @Inject constructor(
             Log.i("SubMatch", "automatic pick \"${subtitle.label}\" ignored: the user chose another track")
             return
         }
-        if (isUserAction) userLockedSubtitleId = subtitle.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
+        if (isUserAction) {
+            userLockedSubtitleId = subtitle.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
+            // A menu pick replaces any primary track chosen earlier in the bilingual panel.
+            com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualPlayerBridge.primaryOverride.value = null
+        }
         hasManualSubtitleSelection = true
         userPickedSubtitle = isUserAction || (locked != null)
         if (isUserAction) {
@@ -4074,6 +4108,18 @@ class PlayerViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(smartBilingualRequestNonce = _uiState.value.smartBilingualRequestNonce + 1)
     }
 
+    /** The smart mode may only use the user's own track as primary, or one they chose in its panel. */
+    private fun smartPrimaryAllowed(primary: Subtitle): Boolean {
+        val locked = userLockedSubtitleId ?: return true
+        if (primary.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX) == locked) return true
+        if (com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualPlayerBridge.primaryOverride.value == primary.id) {
+            userLockedSubtitleId = primary.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
+            return true
+        }
+        Log.i("Bilingual", "smart plan ignored: primary \"${primary.label}\" is not the user's track")
+        return false
+    }
+
     /** Takes the subtitle state over for the smart mode so ARVIO's auto-selection does not fight it. */
     private fun claimSubtitleForSmartMode() {
         cancelFindBestMatch("smart bilingual")
@@ -4089,6 +4135,7 @@ class PlayerViewModel @Inject constructor(
      * The caller sets [SubtitleTranslationManager.secondarySource].
      */
     fun activateSmartBilingualMerge(primary: Subtitle) {
+        if (!smartPrimaryAllowed(primary)) return
         claimSubtitleForSmartMode()
         translationManager.bilingualSource = SubtitleTranslationManager.BilingualSource.EMBEDDED_TRACK
         translationManager.isEnabled = true
@@ -4104,6 +4151,7 @@ class PlayerViewModel @Inject constructor(
 
     /** Path B: AI-translate [primary] into [targetLanguageName] and show both. */
     fun activateSmartBilingualAi(primary: Subtitle, targetLanguageName: String) {
+        if (!smartPrimaryAllowed(primary)) return
         if (!aiKeyReady) return
         claimSubtitleForSmartMode()
         aiSourceSubtitle = primary
@@ -4129,6 +4177,7 @@ class PlayerViewModel @Inject constructor(
 
     /** Smart mode, primary only (same language / nothing to pair with and no AI). */
     fun activateSmartBilingualPrimaryOnly(primary: Subtitle) {
+        if (!smartPrimaryAllowed(primary)) return
         claimSubtitleForSmartMode()
         translationManager.secondarySource = null
         translationManager.bilingualSource = SubtitleTranslationManager.BilingualSource.EMBEDDED_TRACK
