@@ -18,6 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.remember
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
@@ -43,64 +47,163 @@ import com.arflix.tv.ui.components.MobileSettingsRow
 import com.arflix.tv.ui.screens.player.subtitles.bilingual.bt
 import com.arflix.tv.ui.i18n.M3Text as Text
 
-/** Settings → Audio & Subtitles: the offline downloads list (play, pause, retry, delete). */
+/** Settings → Downloads: download location + the offline downloads list (play, pause, retry, delete). */
 @Composable
-fun OfflineDownloadsEntry() {
+fun OfflineDownloadsPage() {
     val context = LocalContext.current
     LaunchedEffect(Unit) { OfflineLibrary.load(context) }
     val items by OfflineLibrary.items.collectAsState()
-    var open by rememberSaveable { mutableStateOf(false) }
+    var currentRoot by remember { mutableStateOf(OfflineStorage.customRoot(context)?.absolutePath) }
+    var showPicker by remember { mutableStateOf(false) }
+    var pendingPath by remember { mutableStateOf<String?>(null) }
 
-    MobileSettingsCategory(title = bt("OFFLINE DOWNLOADS")) {
-        MobileSettingsRow(
-            icon = Icons.Default.Download,
-            title = bt("Offline downloads"),
-            subtitle = bt("Videos downloaded from the player, with AI bilingual subtitles"),
-            value = items.size.toString(),
-            isToggle = false,
-            showDivider = false,
-            onClick = { open = true }
-        )
+    fun apply(path: String?) {
+        if (path == null) {
+            OfflineStorage.setCustomRoot(context, null)
+            currentRoot = null
+            return
+        }
+        val dir = java.io.File(path)
+        if (OfflineStorage.isWritable(dir)) {
+            OfflineStorage.setCustomRoot(context, dir.absolutePath)
+            currentRoot = dir.absolutePath
+            android.widget.Toast.makeText(context, bt("Download location updated"), android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            android.widget.Toast.makeText(
+                context,
+                bt("This folder isn't writable. Try a folder inside Download or Documents."),
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
-    if (!open) return
-    Dialog(onDismissRequest = { open = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF111316))
-                .safeDrawingPadding()
-        ) {
-            Column(Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(bt("Offline downloads"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.Close, contentDescription = bt("Close"), tint = Color.White,
-                        modifier = Modifier.clickable { open = false }.padding(6.dp))
-                }
-                if (items.isEmpty()) {
-                    Text(
-                        bt("Nothing downloaded yet. While playing, open More Settings (⋯) → Download for offline."),
-                        color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(items, key = { it.id }) { item ->
-                        OfflineItemCard(item, onPlay = {
-                            open = false
-                            OfflineLibrary.requestPlay(item)
-                        })
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val p = pendingPath
+        pendingPath = null
+        if (granted && p != null) apply(p)
+        else if (p != null) android.widget.Toast.makeText(context, bt("Storage permission denied"), android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    fun choose(path: String?) {
+        showPicker = false
+        val needsPermission = path != null &&
+            android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.Q &&
+            !path.contains("/Android/data/${context.packageName}") &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingPath = path
+            permissionLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            apply(path)
+        }
+    }
+
+    val treeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val path = OfflineStorage.pathFromTreeUri(uri)
+        if (path == null) {
+            android.widget.Toast.makeText(context, bt("Please choose a folder on this device's storage"), android.widget.Toast.LENGTH_LONG).show()
+        } else {
+            choose(path)
+        }
+    }
+
+    MobileSettingsCategory(title = bt("DOWNLOAD LOCATION")) {
+        MobileSettingsRow(
+            icon = Icons.Default.Folder,
+            title = bt("Download location"),
+            subtitle = currentRoot ?: OfflineLibrary.root(context).absolutePath,
+            value = if (currentRoot == null) bt("App storage (default)") else bt("Custom"),
+            isToggle = false,
+            showDivider = false,
+            onClick = { showPicker = true }
+        )
+    }
+    Text(
+        bt("New downloads go to this folder; existing downloads stay where they are. App storage is removed when the app is uninstalled."),
+        color = Color.White.copy(alpha = 0.5f), fontSize = 11.5.sp,
+        modifier = Modifier.padding(horizontal = 4.dp)
+    )
+
+    MobileSettingsCategory(title = bt("OFFLINE DOWNLOADS")) {
+        if (items.isEmpty()) {
+            Text(
+                bt("Nothing downloaded yet. While playing, open More Settings (⋯) → Download for offline."),
+                color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp,
+                modifier = Modifier.padding(16.dp)
+            )
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items.forEach { item ->
+                    androidx.compose.runtime.key(item.id) {
+                        OfflineItemCard(item, onPlay = { OfflineLibrary.requestPlay(item) })
                     }
-                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
+    }
+
+    if (showPicker) {
+        val options = remember { OfflineStorage.suggestions(context) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPicker = false },
+            containerColor = Color(0xFF161A26),
+            title = { Text(bt("Download location"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    options.forEach { opt ->
+                        val selected = opt.path == currentRoot
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = if (selected) 0.16f else 0.06f))
+                                .clickable { choose(opt.path) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Text(bt(opt.label), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(opt.detail, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (currentRoot != null && options.none { it.path == currentRoot }) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.16f))
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Text(bt("Custom"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(currentRoot ?: "", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .clickable {
+                                showPicker = false
+                                runCatching { treeLauncher.launch(null) }.onFailure {
+                                    android.widget.Toast.makeText(context, bt("No folder picker on this device"), android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Text(bt("Choose folder…"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showPicker = false }) {
+                    Text(bt("Cancel"), color = Color.White.copy(alpha = 0.7f))
+                }
+            }
+        )
     }
 }
 

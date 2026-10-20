@@ -22,8 +22,8 @@ import java.io.File
  *
  * One item = one episode / movie: the video file plus, when a subtitle could be prepared, the
  * original subtitle, the AI translation and a ready-made bilingual SRT (original line, then the
- * translation). Everything lives in the app's own external files dir (no storage permission,
- * removed with the app): `<files>/offline/<id>/`. The index is a small JSON file next to it.
+ * translation). By default everything lives in the app's own external files dir (`<files>/offline/<id>/`);
+ * the user may pick another folder (Settings → Downloads). The index always stays in app storage.
  */
 data class OfflineItem(
     val id: String,
@@ -54,6 +54,8 @@ data class OfflineItem(
     val translatedLines: Int = 0,
     val totalLines: Int = 0,
     val createdAtMs: Long = System.currentTimeMillis(),
+    /** Folder holding this item's files (chosen download location at enqueue time); null = app storage. */
+    val dirPath: String? = null,
 ) {
     val mediaTypeEnum: MediaType get() = if (mediaType == "tv") MediaType.TV else MediaType.MOVIE
     val displayTitle: String
@@ -81,10 +83,18 @@ object OfflineLibrary {
     /** Asks the app's navigation to play a finished download (see AppNavigation). */
     val playRequests = MutableSharedFlow<OfflineItem>(extraBufferCapacity = 1)
 
+    /** App-private folder: always holds the index, and is the default download location. */
     fun root(context: Context): File =
         File(context.applicationContext.getExternalFilesDir(null) ?: context.applicationContext.filesDir, "offline").apply { mkdirs() }
 
-    fun dirFor(context: Context, id: String): File = File(root(context), id).apply { mkdirs() }
+    /** Where new downloads go: the user's chosen folder when it is still writable, else app storage. */
+    fun downloadRoot(context: Context): File =
+        OfflineStorage.customRoot(context)?.takeIf { OfflineStorage.isWritable(it) } ?: root(context)
+
+    fun dirFor(context: Context, id: String): File {
+        val path = _items.value.firstOrNull { it.id == id }?.dirPath
+        return (path?.let { File(it) } ?: File(root(context), id)).apply { mkdirs() }
+    }
 
     private fun indexFile(context: Context) = File(root(context), "index.json")
 
@@ -136,7 +146,10 @@ object OfflineLibrary {
 
     /** Queues (or re-queues) a download; a running one for the same episode is replaced. */
     fun enqueue(context: Context, item: OfflineItem) {
-        upsert(context, item.copy(status = OfflineItem.STATUS_QUEUED, message = ""))
+        load(context)
+        val existingDir = _items.value.firstOrNull { it.id == item.id }?.dirPath
+        val dir = item.dirPath ?: existingDir ?: File(downloadRoot(context), item.id).absolutePath
+        upsert(context, item.copy(status = OfflineItem.STATUS_QUEUED, message = "", dirPath = dir))
         startWorker(context, item.id)
     }
 
@@ -161,7 +174,7 @@ object OfflineLibrary {
 
     fun delete(context: Context, id: String) {
         WorkManager.getInstance(context.applicationContext).cancelUniqueWork(workName(id))
-        runCatching { File(root(context), id).deleteRecursively() }
+        runCatching { dirFor(context, id).deleteRecursively() }
         synchronized(this) {
             load(context)
             _items.value = _items.value.filterNot { it.id == id }

@@ -218,7 +218,7 @@ fun ArvioMobilePlayer(
     var subtitleSheetInitialView by remember { mutableStateOf("root") }
     var showSpeedSheet by remember { mutableStateOf(false) }
     // ARVIO Bilingual: Bilibili-style hold-for-3x. Holding the screen plays at 3x while the finger
-    // stays down; sliding up during the hold locks 3x until the pill is tapped.
+    // stays down; sliding up during the hold locks 3x, sliding down (or tapping the pill) unlocks.
     var speedHoldActive by remember { mutableStateOf(false) }
     var speedHoldLocked by remember { mutableStateOf(false) }
     var speedBeforeHold by remember { mutableStateOf(1f) }
@@ -703,6 +703,9 @@ fun ArvioMobilePlayer(
                         onHoldStart = startSpeedHold,
                         onHoldLock = lockSpeedHold,
                         onHoldEnd = endSpeedHold,
+                        isHoldLocked = { speedHoldLocked },
+                        onHoldUnlock = unlockSpeedHold,
+                        onHoldLockCancel = { speedHoldLocked = false },
                         onActivate = {
                             showControls = false
                             brightnessIndicatorTrigger++
@@ -737,6 +740,9 @@ fun ArvioMobilePlayer(
                         onHoldStart = startSpeedHold,
                         onHoldLock = lockSpeedHold,
                         onHoldEnd = endSpeedHold,
+                        isHoldLocked = { speedHoldLocked },
+                        onHoldUnlock = unlockSpeedHold,
+                        onHoldLockCancel = { speedHoldLocked = false },
                         onActivate = {
                             showControls = false
                             volumeIndicatorTrigger++
@@ -777,7 +783,7 @@ fun ArvioMobilePlayer(
             ) {
                 Text(
                     text = if (speedHoldLocked) {
-                        com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("3x speed locked · tap to cancel")
+                        com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("3x speed locked · slide down to unlock")
                     } else {
                         com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("3x speed · slide up to lock")
                     },
@@ -1464,12 +1470,37 @@ private suspend fun PointerInputScope.detectPlayerVerticalAdjustmentGesture(
     onHoldStart: (() -> Unit)? = null,
     onHoldLock: (() -> Unit)? = null,
     onHoldEnd: (() -> Unit)? = null,
+    isHoldLocked: () -> Boolean = { false },
+    onHoldUnlock: (() -> Unit)? = null,
+    onHoldLockCancel: (() -> Unit)? = null,
     onActivate: () -> Unit,
     onValueChange: (Float) -> Unit
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         val initialPosition = down.position
+        if (onHoldUnlock != null && isHoldLocked()) {
+            // 3x is locked: a downward slide unlocks it; nothing else adjusts brightness/volume.
+            while (true) {
+                val ev = awaitPointerEvent()
+                val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                if (!c.pressed) break
+                val dy = c.position.y - initialPosition.y
+                val dx = c.position.x - initialPosition.x
+                if (dy > thresholdPx * 2f && dy > abs(dx)) {
+                    c.consume()
+                    onHoldUnlock()
+                    while (true) {
+                        val e2 = awaitPointerEvent()
+                        val c2 = e2.changes.firstOrNull { it.id == down.id } ?: break
+                        c2.consume()
+                        if (!c2.pressed) break
+                    }
+                    break
+                }
+            }
+            return@awaitEachGesture
+        }
         if (onHoldStart != null) {
             // 0 = released early, 1 = moved (a normal swipe), null = held still → long press.
             val early: Int? = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
@@ -1486,6 +1517,7 @@ private suspend fun PointerInputScope.detectPlayerVerticalAdjustmentGesture(
             if (early == null) {
                 onHoldStart()
                 var locked = false
+                var lockY = initialPosition.y
                 while (true) {
                     val ev = awaitPointerEvent()
                     val c = ev.changes.firstOrNull { it.id == down.id } ?: break
@@ -1493,7 +1525,15 @@ private suspend fun PointerInputScope.detectPlayerVerticalAdjustmentGesture(
                     if (!c.pressed) break
                     if (!locked && initialPosition.y - c.position.y > thresholdPx * 2f) {
                         locked = true
+                        lockY = c.position.y
                         onHoldLock?.invoke()
+                    } else if (locked) {
+                        lockY = minOf(lockY, c.position.y)
+                        if (c.position.y - lockY > thresholdPx * 2f) {
+                            // Slid back down within the same press: unlock and keep holding 3x.
+                            locked = false
+                            onHoldLockCancel?.invoke()
+                        }
                     }
                 }
                 if (!locked) onHoldEnd?.invoke()

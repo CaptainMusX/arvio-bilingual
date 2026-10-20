@@ -1,5 +1,9 @@
 package com.arflix.tv.ui.screens.player.mobile
 
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.offset
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -2030,6 +2034,114 @@ private fun ExactDelayInputDialog(
 }
 
 @Composable
+private fun RowScope.DelayStepChip(
+    label: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White.copy(alpha = if (enabled) 0.10f else 0.05f))
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) MobilePlayerTokens.InkPrimary else MobilePlayerTokens.InkTertiary,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+
+/**
+ * ARVIO Bilingual: a white slider whose fill grows from the centre (0 ms) towards the thumb,
+ * left for negative offsets and right for positive ones.
+ */
+@Composable
+private fun CenteredDelaySlider(
+    valueMs: Long,
+    minMs: Long,
+    maxMs: Long,
+    onValueChange: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val latestOnChange by androidx.compose.runtime.rememberUpdatedState(onValueChange)
+    val range = (maxMs - minMs).coerceAtLeast(1L).toFloat()
+    val fraction = ((valueMs.coerceIn(minMs, maxMs) - minMs).toFloat() / range).coerceIn(0f, 1f)
+    val centerFraction = ((0L - minMs).toFloat() / range).coerceIn(0f, 1f)
+    val thumbSize = 18.dp
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier = modifier
+            .height(36.dp)
+            .pointerInput(minMs, maxMs) {
+                fun toValue(x: Float): Long {
+                    val pad = thumbSize.toPx() / 2f
+                    val usable = (size.width - pad * 2f).coerceAtLeast(1f)
+                    val f = ((x - pad) / usable).coerceIn(0f, 1f)
+                    return (minMs + f * (maxMs - minMs)).roundToLong()
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    down.consume()
+                    latestOnChange(toValue(down.position.x))
+                    while (true) {
+                        val ev = awaitPointerEvent()
+                        val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!c.pressed) break
+                        c.consume()
+                        latestOnChange(toValue(c.position.x))
+                    }
+                }
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        val usable = maxWidth - thumbSize
+        val half = thumbSize / 2
+        val lo = minOf(fraction, centerFraction)
+        val hi = maxOf(fraction, centerFraction)
+        // Inactive track
+        Box(
+            modifier = Modifier
+                .padding(horizontal = half)
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color.White.copy(alpha = 0.2f))
+        )
+        // Active fill from centre to value
+        Box(
+            modifier = Modifier
+                .offset(x = half + usable * lo)
+                .width(usable * (hi - lo))
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color.White)
+        )
+        // Centre tick
+        Box(
+            modifier = Modifier
+                .offset(x = half + usable * centerFraction - 1.dp)
+                .width(2.dp)
+                .height(12.dp)
+                .background(Color.White.copy(alpha = 0.5f))
+        )
+        // Thumb
+        Box(
+            modifier = Modifier
+                .offset(x = usable * fraction)
+                .size(thumbSize)
+                .clip(CircleShape)
+                .background(Color.White)
+        )
+    }
+}
+
+@Composable
 private fun DelayAdjusterContent(
     title: String,
     delayMs: Long,
@@ -2064,7 +2176,7 @@ private fun DelayAdjusterContent(
         ) {
             Text(
                 text = if (delayMs > 0) "+$delayMs ms" else "$delayMs ms",
-                color = if (delayMs != 0L) Color(0xFFFFB300) else MobilePlayerTokens.InkPrimary,
+                color = MobilePlayerTokens.InkPrimary,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -2081,18 +2193,13 @@ private fun DelayAdjusterContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Slider(
-                value = delayMs.toFloat().coerceIn(sliderMin.toFloat(), sliderMax.toFloat()),
-                onValueChange = {
-                    val raw = it.roundToLong()
+            CenteredDelaySlider(
+                valueMs = delayMs,
+                minMs = sliderMin,
+                maxMs = sliderMax,
+                onValueChange = { raw ->
                     onUpdateDelay(if (sliderRangeMs != null) (raw / 50L) * 50L else raw)
                 },
-                valueRange = sliderMin.toFloat()..sliderMax.toFloat(),
-                colors = SliderDefaults.colors(
-                    thumbColor = if (delayMs != 0L) Color(0xFFFFB300) else Color.White,
-                    activeTrackColor = if (delayMs != 0L) Color(0xFFFFB300) else Color.White,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
@@ -2123,34 +2230,31 @@ private fun DelayAdjusterContent(
         }
 
         if (quickStepsMs.isNotEmpty()) {
-            val steps = quickStepsMs.sortedDescending().map { -it } + quickStepsMs.sorted()
+            val negatives = quickStepsMs.sortedDescending().map { -it }
+            val positives = quickStepsMs.sorted()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                steps.forEach { step ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.White.copy(alpha = 0.10f))
-                            .clickable { onUpdateDelay((delayMs + step).coerceIn(minMs, maxMs)) }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = (if (step > 0) "+" else "-") + "${kotlin.math.abs(step) / 1000}s",
-                            color = MobilePlayerTokens.InkPrimary,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                negatives.forEach { step ->
+                    DelayStepChip(
+                        label = "-${kotlin.math.abs(step) / 1000}s",
+                        onClick = { onUpdateDelay((delayMs + step).coerceIn(minMs, maxMs)) }
+                    )
+                }
+                DelayStepChip(
+                    label = "Reset",
+                    enabled = delayMs != 0L,
+                    onClick = { onUpdateDelay(0L) }
+                )
+                positives.forEach { step ->
+                    DelayStepChip(
+                        label = "+${step / 1000}s",
+                        onClick = { onUpdateDelay((delayMs + step).coerceIn(minMs, maxMs)) }
+                    )
                 }
             }
-        }
-
-        // Reset Button if != 0
-        if (delayMs != 0L) {
+        } else if (delayMs != 0L) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -5356,6 +5356,7 @@ private fun mobileCategoryTitle(page: String): String = when (page) {
     "Stream Integrations" -> stringResource(R.string.settings_stream_integrations)
     "Playback & Controls" -> stringResource(R.string.settings_cat_playback_controls)
     "Audio & Subtitles" -> stringResource(R.string.settings_cat_audio_subtitles)
+    "Downloads" -> com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("Downloads")
     "Appearance" -> stringResource(R.string.interface_label)
     "Addons" -> stringResource(R.string.addons)
     "Plugins & Extensions" -> stringResource(R.string.settings_cat_plugins_extensions)
@@ -5441,6 +5442,7 @@ private fun MobileSettingsMainPage(
                     add("Stream Integrations" to Icons.Default.Tune)
                     add("Playback & Controls" to Icons.Default.PlayArrow)
                     add("Audio & Subtitles" to Icons.Default.Speaker)
+                    add("Downloads" to androidx.compose.material.icons.Icons.Default.Download)
                     add("Appearance" to Icons.Default.Palette)
                     add("Addons" to Icons.Default.Extension)
                     if (BuildConfig.FEATURE_PLUGINS_ENABLED) {
@@ -5797,7 +5799,6 @@ private fun MobileSettingsSubPage(
             "Audio & Subtitles" -> {
                 // ARVIO Bilingual: English + Chinese AI subtitle style (separate from Secondary Subtitle).
                 com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualSettingsEntry()
-                com.arflix.tv.offline.OfflineDownloadsEntry()
                 MobileSettingsCategory(title = stringResource(R.string.settings_section_subtitles)) {
                     MobileSettingsRow(
                         icon = Icons.Default.Subtitles,
@@ -5973,6 +5974,9 @@ private fun MobileSettingsSubPage(
                         )
                     }
                 }
+            }
+            "Downloads" -> {
+                com.arflix.tv.offline.OfflineDownloadsPage()
             }
             "Appearance" -> {
                 MobileSettingsCategory(title = stringResource(R.string.settings_section_appearance)) {

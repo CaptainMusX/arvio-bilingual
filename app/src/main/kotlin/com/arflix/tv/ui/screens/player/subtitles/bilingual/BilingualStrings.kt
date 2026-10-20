@@ -18,7 +18,21 @@ object BilingualStrings {
     }
 
     private val T: Map<String, Pair<String, String>> = mapOf(
-        "3x speed locked · tap to cancel" to Pair("3倍速已锁定 · 点击取消", "3倍速已鎖定 · 點選取消"),
+        "Downloads" to Pair("下载", "下載"),
+        "Custom" to Pair("自定义", "自定義"),
+        "DOWNLOAD LOCATION" to Pair("下载位置", "下載位置"),
+        "Download location" to Pair("下载位置", "下載位置"),
+        "Download location updated" to Pair("下载位置已更新", "下載位置已更新"),
+        "This folder isn't writable. Try a folder inside Download or Documents." to Pair("该文件夹无法写入，请选择 Download 或 Documents 中的文件夹。", "該資料夾無法寫入，請選擇 Download 或 Documents 中的資料夾。"),
+        "Storage permission denied" to Pair("存储权限被拒绝", "儲存許可權被拒絕"),
+        "Please choose a folder on this device's storage" to Pair("请选择本机存储中的文件夹", "請選擇本機儲存中的資料夾"),
+        "App storage (default)" to Pair("应用存储（默认）", "應用儲存（預設）"),
+        "New downloads go to this folder; existing downloads stay where they are. App storage is removed when the app is uninstalled." to Pair("新的下载将保存到此文件夹，已有下载保留在原位置。应用存储中的文件会在卸载应用时删除。", "新的下載將儲存到此資料夾，已有下載保留在原位置。應用儲存中的檔案會在解除安裝應用時刪除。"),
+        "No folder picker on this device" to Pair("此设备没有文件夹选择器", "此裝置沒有資料夾選擇器"),
+        "Choose folder…" to Pair("选择文件夹…", "選擇資料夾…"),
+        "SD card / USB storage" to Pair("SD 卡 / USB 存储", "SD 卡 / USB 儲存"),
+        "Download folder" to Pair("Download 文件夹", "Download 資料夾"),
+        "3x speed locked · slide down to unlock" to Pair("3倍速已锁定 · 下滑解锁", "3倍速已鎖定 · 下滑解鎖"),
         "3x speed · slide up to lock" to Pair("3倍速播放中 · 上滑锁定", "3倍速播放中 · 上滑鎖定"),
         "AI translating subtitles" to Pair("AI 翻译字幕中", "AI 翻譯字幕中"),
         "Download for offline (with bilingual subtitles)" to Pair("离线下载（含双语字幕）", "離線下載（含雙語字幕）"),
