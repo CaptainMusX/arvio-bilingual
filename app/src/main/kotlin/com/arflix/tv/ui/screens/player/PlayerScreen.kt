@@ -236,7 +236,6 @@ import dagger.hilt.android.EntryPointAccessors
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.PictureInPicture
-import androidx.mediarouter.app.MediaRouteChooserDialog
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
@@ -369,6 +368,21 @@ fun PlayerScreen(
     val castState by castManager.castState.collectAsStateWithLifecycle()
     val isCasting = castState is CastManager.CastState.Casting
     val castAvailable = castState !is CastManager.CastState.NotAvailable
+    // ARVIO Bilingual: own chooser listing Google Cast and DLNA TVs on the same Wi-Fi.
+    var showCastChooser by remember { mutableStateOf(false) }
+    if (showCastChooser) {
+        com.arflix.tv.cast.CastDeviceChooserDialog(
+            castManager = castManager,
+            onDismiss = { showCastChooser = false }
+        )
+    }
+    val castError by castManager.castError.collectAsStateWithLifecycle()
+    val castErrorLang = com.arflix.tv.util.LocalAppLanguage.current
+    LaunchedEffect(castError) {
+        val msg = castError ?: return@LaunchedEffect
+        android.widget.Toast.makeText(context, com.arflix.tv.util.UiI18n.t(msg, castErrorLang), android.widget.Toast.LENGTH_LONG).show()
+        castManager.clearCastError()
+    }
     // Hide cast button for streams that require custom request headers (Authorization, Referer, etc.)
     // since the Chromecast default receiver fetches the URL directly without those headers.
     val streamNeedsHeaders = uiState.selectedStream
@@ -4076,9 +4090,7 @@ fun PlayerScreen(
                     if (isCasting) {
                         castManager.disconnect()
                     } else {
-                        val dialog = MediaRouteChooserDialog(context)
-                        dialog.routeSelector = castManager.getRouteSelector()
-                        dialog.show()
+                        showCastChooser = true
                     }
                 },
                 onRetryPlayback = {
@@ -4269,9 +4281,7 @@ fun PlayerScreen(
                                                 if (isCasting) {
                                                     castManager.disconnect()
                                                 } else {
-                                                    val dialog = MediaRouteChooserDialog(context)
-                                                    dialog.routeSelector = castManager.getRouteSelector()
-                                                    dialog.show()
+                                                    showCastChooser = true
                                                 }
                                             },
                                         contentAlignment = Alignment.Center

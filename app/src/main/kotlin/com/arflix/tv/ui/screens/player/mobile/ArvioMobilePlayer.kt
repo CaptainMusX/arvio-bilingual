@@ -46,6 +46,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -245,6 +247,28 @@ fun ArvioMobilePlayer(
         speedHoldActive = false
         speedHoldLocked = false
         latestOnSelectSpeed(speedBeforeHold)
+    }
+    // ARVIO Bilingual: horizontal swipe on the video seeks (preview while dragging, seek on release).
+    var swipeSeekActive by remember { mutableStateOf(false) }
+    var swipeSeekStartMs by remember { mutableLongStateOf(0L) }
+    var swipeSeekTargetMs by remember { mutableLongStateOf(0L) }
+    val latestDurationMs by rememberUpdatedState(durationMs)
+    val latestPositionMs by rememberUpdatedState(currentPositionMs)
+    val latestOnSeekTo by rememberUpdatedState(onSeekTo)
+    val latestScrubPreview by rememberUpdatedState(onScrubPreviewPosition)
+    val swipeSeekStart: () -> Unit = {
+        if (latestDurationMs > 0L) {
+            swipeSeekActive = true
+            swipeSeekStartMs = latestPositionMs
+            swipeSeekTargetMs = latestPositionMs
+        }
+    }
+    val swipeSeekEnd: (Boolean) -> Unit = { cancelled ->
+        if (swipeSeekActive) {
+            swipeSeekActive = false
+            latestScrubPreview?.invoke(null)
+            if (!cancelled && swipeSeekTargetMs != swipeSeekStartMs) latestOnSeekTo(swipeSeekTargetMs)
+        }
     }
     var showMoreSettingsSheet by remember { mutableStateOf(false) }
     var isRepositioningSubtitles by remember { mutableStateOf(false) }
@@ -706,6 +730,16 @@ fun ArvioMobilePlayer(
                         isHoldLocked = { speedHoldLocked },
                         onHoldUnlock = unlockSpeedHold,
                         onHoldLockCancel = { speedHoldLocked = false },
+                        onHorizontalStart = swipeSeekStart,
+                        onHorizontalMove = { dxPx ->
+                            if (swipeSeekActive) {
+                                val dur = latestDurationMs
+                                val delta = swipeSeekDeltaMs(dxPx, size.width * 2f, dur)
+                                swipeSeekTargetMs = (swipeSeekStartMs + delta).coerceIn(0L, dur)
+                                latestScrubPreview?.invoke(swipeSeekTargetMs)
+                            }
+                        },
+                        onHorizontalEnd = swipeSeekEnd,
                         onActivate = {
                             showControls = false
                             brightnessIndicatorTrigger++
@@ -743,6 +777,16 @@ fun ArvioMobilePlayer(
                         isHoldLocked = { speedHoldLocked },
                         onHoldUnlock = unlockSpeedHold,
                         onHoldLockCancel = { speedHoldLocked = false },
+                        onHorizontalStart = swipeSeekStart,
+                        onHorizontalMove = { dxPx ->
+                            if (swipeSeekActive) {
+                                val dur = latestDurationMs
+                                val delta = swipeSeekDeltaMs(dxPx, size.width * 2f, dur)
+                                swipeSeekTargetMs = (swipeSeekStartMs + delta).coerceIn(0L, dur)
+                                latestScrubPreview?.invoke(swipeSeekTargetMs)
+                            }
+                        },
+                        onHorizontalEnd = swipeSeekEnd,
                         onActivate = {
                             showControls = false
                             volumeIndicatorTrigger++
@@ -789,6 +833,41 @@ fun ArvioMobilePlayer(
                     },
                     style = ArflixTypography.caption.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
                     color = Color.White
+                )
+            }
+        }
+
+        // ── Swipe-to-seek indicator ──
+        if (swipeSeekActive) {
+            val deltaMs = swipeSeekTargetMs - swipeSeekStartMs
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 22.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                seekPreviewFrame?.let { frame ->
+                    androidx.compose.foundation.Image(
+                        bitmap = frame.bitmap.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier
+                            .width(176.dp)
+                            .height(99.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(
+                    text = (if (deltaMs >= 0) "+" else "-") + formatSwipeSeekTime(kotlin.math.abs(deltaMs)),
+                    style = ArflixTypography.caption.copy(fontWeight = FontWeight.Bold, fontSize = 22.sp),
+                    color = Color.White
+                )
+                Text(
+                    text = formatSwipeSeekTime(swipeSeekTargetMs) + " / " + formatSwipeSeekTime(durationMs),
+                    style = ArflixTypography.caption.copy(fontSize = 13.sp),
+                    color = Color.White.copy(alpha = 0.8f)
                 )
             }
         }
@@ -1442,6 +1521,7 @@ private fun setWindowBrightness(activity: Activity?, brightness: Float) {
 private enum class PlayerSwipeGestureState {
     UNCLASSIFIED,
     VERTICAL_ACTIVE,
+    HORIZONTAL_ACTIVE,
     HORIZONTAL_REJECTED
 }
 
@@ -1474,7 +1554,10 @@ private suspend fun PointerInputScope.detectPlayerVerticalAdjustmentGesture(
     onHoldUnlock: (() -> Unit)? = null,
     onHoldLockCancel: (() -> Unit)? = null,
     onActivate: () -> Unit,
-    onValueChange: (Float) -> Unit
+    onValueChange: (Float) -> Unit,
+    onHorizontalStart: (() -> Unit)? = null,
+    onHorizontalMove: ((deltaXPx: Float) -> Unit)? = null,
+    onHorizontalEnd: ((cancelled: Boolean) -> Unit)? = null
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -1547,10 +1630,24 @@ private suspend fun PointerInputScope.detectPlayerVerticalAdjustmentGesture(
         var gestureState = PlayerSwipeGestureState.UNCLASSIFIED
         var activationDeltaY = 0f
 
+        var horizontalActivationX = 0f
+        var horizontalEnded = false
         while (true) {
             val event = awaitPointerEvent()
-            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            if (!change.pressed) break
+            val change = event.changes.firstOrNull { it.id == down.id }
+            if (change == null) {
+                if (gestureState == PlayerSwipeGestureState.HORIZONTAL_ACTIVE) {
+                    onHorizontalEnd?.invoke(true); horizontalEnded = true
+                }
+                break
+            }
+            if (!change.pressed) {
+                if (gestureState == PlayerSwipeGestureState.HORIZONTAL_ACTIVE) {
+                    change.consume()
+                    onHorizontalEnd?.invoke(false); horizontalEnded = true
+                }
+                break
+            }
 
             val currentPosition = change.position
             val totalDeltaX = currentPosition.x - initialPosition.x
@@ -1564,7 +1661,13 @@ private suspend fun PointerInputScope.detectPlayerVerticalAdjustmentGesture(
                         activationDeltaY = totalDeltaY
                         onActivate()
                     } else if (abs(totalDeltaX) > abs(totalDeltaY) * 1.2f) {
-                        gestureState = PlayerSwipeGestureState.HORIZONTAL_REJECTED
+                        if (onHorizontalMove != null) {
+                            gestureState = PlayerSwipeGestureState.HORIZONTAL_ACTIVE
+                            horizontalActivationX = totalDeltaX
+                            onHorizontalStart?.invoke()
+                        } else {
+                            gestureState = PlayerSwipeGestureState.HORIZONTAL_REJECTED
+                        }
                     }
                 }
             }
@@ -1575,7 +1678,27 @@ private suspend fun PointerInputScope.detectPlayerVerticalAdjustmentGesture(
                 val normalizedDelta = -effectiveDeltaY / playerHeight
                 val newValue = (initialValue + normalizedDelta * sensitivity).coerceIn(bounds.start, bounds.endInclusive)
                 onValueChange(newValue)
+            } else if (gestureState == PlayerSwipeGestureState.HORIZONTAL_ACTIVE) {
+                change.consume()
+                onHorizontalMove?.invoke(totalDeltaX - horizontalActivationX)
             }
         }
+        if (gestureState == PlayerSwipeGestureState.HORIZONTAL_ACTIVE && !horizontalEnded) {
+            onHorizontalEnd?.invoke(true)
+        }
     }
+}
+
+
+/** Full screen width ≈ 2 minutes (3 minutes for long videos); never more than the video. */
+internal fun swipeSeekDeltaMs(dxPx: Float, screenWidthPx: Float, durationMs: Long): Long {
+    val width = screenWidthPx.coerceAtLeast(1f)
+    val span = if (durationMs >= 60L * 60_000L) 180_000f else 120_000f
+    return (dxPx / width * span).toLong()
+}
+
+internal fun formatSwipeSeekTime(ms: Long): String {
+    val total = (ms.coerceAtLeast(0L) / 1000L)
+    val h = total / 3600; val m = (total % 3600) / 60; val sec = total % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
 }

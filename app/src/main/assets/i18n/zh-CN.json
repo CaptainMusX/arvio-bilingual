@@ -1970,7 +1970,13 @@
 "Rate limited (HTTP 429) — wait a moment or check your quota": "触发速率限制（HTTP 429）— 请稍等或检查额度",
 "No AI is set up for translation. Add a Gemini/Groq key in Settings → AI Subtitles, or turn on a custom model below; until then only the original subtitle can be shown.": "尚未设置翻译用的 AI。请在 设置 → AI 字幕 中添加 Gemini/Groq 密钥，或在下方开启自定义模型；在此之前只能显示原文字幕。",
 "Speed": "速度",
-"Quality": "画质"
+"Quality": "画质",
+"Cast to device": "投屏到设备",
+"Search again": "重新搜索",
+"Searching for TVs on this Wi-Fi…": "正在搜索同一 Wi-Fi 下的电视…",
+"No TV found. Make sure the phone and TV are on the same Wi-Fi and the TV's casting (DLNA / Chromecast) is turned on.": "未找到电视。请确认手机与电视连接同一 Wi-Fi，并已开启电视的投屏功能（DLNA / Chromecast）。",
+"The TV refused this video format": "电视无法播放此视频格式",
+"This source plays through the phone and can't be cast. Pick a direct or debrid source.": "此来源需通过手机本地播放，无法投屏。请选择直链或 Debrid 来源。"
 },
 "patterns": [
 [

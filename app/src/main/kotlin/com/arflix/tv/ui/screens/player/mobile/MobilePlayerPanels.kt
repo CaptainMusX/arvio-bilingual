@@ -2193,13 +2193,18 @@ private fun DelayAdjusterContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            CenteredDelaySlider(
-                valueMs = delayMs,
-                minMs = sliderMin,
-                maxMs = sliderMax,
-                onValueChange = { raw ->
+            Slider(
+                value = delayMs.toFloat().coerceIn(sliderMin.toFloat(), sliderMax.toFloat()),
+                onValueChange = {
+                    val raw = it.roundToLong()
                     onUpdateDelay(if (sliderRangeMs != null) (raw / 50L) * 50L else raw)
                 },
+                valueRange = sliderMin.toFloat()..sliderMax.toFloat(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Color.White,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)

@@ -118,7 +118,7 @@ jobs:
       - name: Unit tests (subtitles, incl. bilingual)
         run: |
           set -o pipefail
-          if ! ./gradlew :app:testSideloadDebugUnitTest --tests 'com.arflix.tv.ui.screens.player.subtitles.*' --tests 'com.arflix.tv.offline.*' --no-daemon --stacktrace 2>&1 | tee unit-tests.log; then
+          if ! ./gradlew :app:testSideloadDebugUnitTest --tests 'com.arflix.tv.ui.screens.player.subtitles.*' --tests 'com.arflix.tv.offline.*' --tests 'com.arflix.tv.cast.*' --tests 'com.arflix.tv.ui.screens.player.mobile.SwipeSeekTest' --no-daemon --stacktrace 2>&1 | tee unit-tests.log; then
             grep -E "FAILED|Exception|Error at|expected:|^e: " unit-tests.log | grep -v "^\s*at " | head -n 40 \
               | while IFS= read -r line; do echo "::error::${line:0:900}"; done
             exit 1
