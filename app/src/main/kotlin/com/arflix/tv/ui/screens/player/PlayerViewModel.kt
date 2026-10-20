@@ -374,8 +374,12 @@ class PlayerViewModel @Inject constructor(
         // reference switches) write selectedSubtitle directly instead of going through
         // selectSubtitle. Whatever path it was, a different track replacing the user's own pick
         // is put back at once (and AI translation keeps translating the user's track).
-        viewModelScope.launch {
-            _uiState.collect { st -> enforceUserSubtitleLock(st) }
+        // Dispatched (not immediate): it must start after every property below is initialised.
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            _uiState.collect { st ->
+                enforceUserSubtitleLock(st)
+                ensureOfflineSidecars(_uiState.value)
+            }
         }
     }
 
@@ -3652,6 +3656,7 @@ class PlayerViewModel @Inject constructor(
             if (!audioSyncSwitching) {
                 audioSyncTarget = null
                 audioSync?.stop()
+                calibrateUserPickByAudio(subtitle)
             }
         }
         subtitleSelectionJob?.cancel()
@@ -6700,8 +6705,46 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * ARVIO Bilingual: upstream only synced a subtitle to the audio as a fallback inside a match
+     * scan, where it could also swap to another addon subtitle. Here the subtitle the user picked
+     * is itself calibrated to the audio: its delay is measured by on-device speech recognition and
+     * applied (as the auto-correction readout / a re-timed copy), and the track is never swapped.
+     * Embedded tracks are muxed with the video and keep their own timing.
+     */
+    private fun calibrateUserPickByAudio(pick: Subtitle) {
+        if (pick.isEmbedded || pick.isBitmap) return
+        val sync = audioSyncOrNull() ?: return
+        if (!hearingAvailable || !sync.canTakeOver) return
+        val original = _uiState.value.subtitles.firstOrNull {
+            !it.isEmbedded && it.provider == pick.provider && it.id == pick.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
+        } ?: pick
+        if (!(original.url.startsWith("http://") || original.url.startsWith("https://"))) return
+        val streamUrl = _uiState.value.selectedStreamUrl
+        val lockedId = original.id
+        audioSyncWorkJob?.cancel()
+        audioSyncWorkJob = viewModelScope.launch {
+            val raw = (preloadedCopyFor(original)?.url?.let { SubtitleSyncMatcher.loadRaw(it, original.lang) })
+                ?: SubtitleSyncMatcher.loadRaw(original.url, original.lang)
+                ?: return@launch
+            val cues = withContext(Dispatchers.Default) { SubtitleSyncMatcher.parseCues(raw) }
+            if (_uiState.value.selectedStreamUrl != streamUrl || userLockedSubtitleId != lockedId || !hearingAvailable) return@launch
+            armAudioSync()
+            audioSyncTarget = original
+            audioSyncRaw = raw
+            Log.i("SubMatch", "audio calibration: listening to time \"${original.label}\" (${cues.size} cues)")
+            sync.takeOver(original.url, cues, onFailed = {
+                Log.i("SubMatch", "audio calibration: no confident timing for \"${original.label}\" — kept as authored")
+            }, holdUntilConfirmed = false)
+        }
+    }
+
     /** The audio fits another addon subtitle of the same language: show it and sync that one. */
     private fun switchToAudioSyncedSubtitle(url: String) {
+        if (userLockedSubtitleId != null) {
+            Log.i("SubMatch", "audio sync: not switching away from the user's own subtitle")
+            return
+        }
         val next = _uiState.value.subtitles.firstOrNull { !it.isEmbedded && it.url == url } ?: return
         val sync = audioSync ?: return
         val target = audioSyncTarget ?: return
@@ -7996,10 +8039,129 @@ class PlayerViewModel @Inject constructor(
         )
     }
 
+    /**
+     * ARVIO Bilingual: queue an offline download of what is playing — the video, plus the selected
+     * (or AI source) subtitle translated into the bilingual secondary language. Returns null when
+     * queued, or the reason it cannot be downloaded.
+     */
+    fun startOfflineDownload(): String? {
+        val st = _uiState.value
+        val url = st.selectedStreamUrl?.takeIf { it.isNotBlank() } ?: return "Nothing is playing"
+        val lower = url.lowercase()
+        val host = runCatching { java.net.URI(url).host?.lowercase() }.getOrNull().orEmpty()
+        when {
+            lower.startsWith("file:") -> return "This video is already offline"
+            !(lower.startsWith("http://") || lower.startsWith("https://")) -> return "This source type cannot be downloaded"
+            host == "127.0.0.1" || host == "localhost" -> return "Torrent/local-engine sources cannot be downloaded; choose a direct or debrid source"
+            lower.contains(".m3u8") || lower.contains(".mpd") -> return "Streaming playlists (HLS/DASH) cannot be downloaded"
+        }
+        val mediaTypeStr = if (currentMediaType == MediaType.TV) "tv" else "movie"
+        val season = currentDisplaySeason ?: currentSeason
+        val episode = currentDisplayEpisode ?: currentEpisode
+        val id = com.arflix.tv.offline.OfflineLibrary.idFor(mediaTypeStr, currentMediaId, season, episode)
+        val subtitle = (if (st.isAiTranslating) aiSourceSubtitle else null) ?: st.selectedSubtitle
+            ?: st.subtitles.firstOrNull { it.isEmbedded && !it.isBitmap }
+            ?: st.subtitles.firstOrNull { !it.isEmbedded && !it.isBitmap }
+        val externalUrl = subtitle?.takeIf { !it.isEmbedded && !it.isBitmap }?.let { sub ->
+            // Prefer the addon's original http entry over a cache-dir copy that may be evicted.
+            st.subtitles.firstOrNull { !it.isEmbedded && it.provider == sub.provider &&
+                it.id == sub.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX) && it.url.startsWith("http") }?.url ?: sub.url
+        }
+        val bilingual = com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualSubtitleSettingsStore.from(context).settings.value
+        val target = bilingual.secondary
+        val ext = url.substringBefore('?').substringAfterLast('/', "").substringAfterLast('.', "")
+            .lowercase().takeIf { it in setOf("mkv", "mp4", "m4v", "avi", "webm", "mov", "ts") } ?: "mkv"
+        val title = currentItemTitle.ifBlank { st.selectedStream?.source?.take(40) ?: "Video" }
+        val item = com.arflix.tv.offline.OfflineItem(
+            id = id,
+            mediaType = mediaTypeStr,
+            mediaId = currentMediaId,
+            season = season,
+            episode = episode,
+            title = title,
+            sourceName = st.selectedStream?.source.orEmpty().take(200),
+            url = url,
+            headers = st.selectedStream?.behaviorHints?.proxyHeaders?.request.orEmpty(),
+            fileName = com.arflix.tv.offline.OfflineSubtitles.safeName(
+                if (season != null && episode != null) "$title S${season}E$episode" else title
+            ) + "." + ext,
+            subtitleUrl = externalUrl,
+            subtitleLang = subtitle?.lang.orEmpty(),
+            subtitleLabel = subtitle?.label.orEmpty(),
+            embeddedSubtitleLang = subtitle?.takeIf { it.isEmbedded }?.lang,
+            targetLanguageName = target.translationTargetName,
+            targetLanguageTag = target.tag,
+        )
+        val previous = com.arflix.tv.offline.OfflineLibrary.get(context, id)
+        if (previous != null && previous.status == com.arflix.tv.offline.OfflineItem.STATUS_DONE && previous.url == url) {
+            return "Already downloaded"
+        }
+        com.arflix.tv.offline.OfflineLibrary.enqueue(context, item)
+        Log.i("Offline", "queued $id (${item.fileName}) subtitle=${subtitle?.label ?: "-"} -> ${target.tag}")
+        return null
+    }
+
+    // ── Offline sidecar subtitles ──────────────────────────────────────────────────
+    private var offlineSidecarUrl: String? = null
+    private var offlineSidecars: List<Subtitle> = emptyList()
+    private var offlineAutoSelected = false
+
+    /** A downloaded video's prepared subtitles join the list; the bilingual one is picked once. */
+    private fun ensureOfflineSidecars(st: PlayerUiState) {
+        val url = st.selectedStreamUrl
+        if (url != offlineSidecarUrl) {
+            offlineSidecarUrl = url
+            offlineAutoSelected = false
+            offlineSidecars = runCatching { com.arflix.tv.offline.OfflineLibrary.sidecarsFor(context, url) }.getOrDefault(emptyList())
+        }
+        if (offlineSidecars.isEmpty()) return
+        val missing = offlineSidecars.filter { side -> st.subtitles.none { it.id == side.id } }
+        if (missing.isNotEmpty()) {
+            _uiState.value = _uiState.value.copy(subtitles = offlineSidecars + _uiState.value.subtitles.filterNot { s -> offlineSidecars.any { it.id == s.id } })
+            return
+        }
+        if (!offlineAutoSelected) {
+            offlineAutoSelected = true
+            val sel = st.selectedSubtitle
+            if (sel == null || sel.provider != "Offline") selectSubtitle(offlineSidecars.first(), isUserAction = true)
+        }
+    }
+
+    /** Set by [refetchSameSourceFresh]: the source to pick again from a freshly fetched list. */
+    private var refetchRecent: RecentPlayedSource? = null
+
+    /**
+     * ARVIO Bilingual: the selected source failed before its first frame with a network / HTTP
+     * error — typically an expired link from a list saved before the app was closed. Re-fetch the
+     * source list (bypassing caches) and autoplay the same source (matched by torrent hash / file
+     * name / title, never by the stale URL), resuming at the same position.
+     */
+    private var refetchedSourceKey: String? = null
+
+    fun refetchSameSourceFresh(): Boolean {
+        val stream = _uiState.value.selectedStream ?: return false
+        val key = "$currentMediaType:$currentMediaId:$currentSeason:$currentEpisode:${stream.addonId}:${stream.infoHash ?: stream.source}"
+        if (key == refetchedSourceKey) return false // already re-fetched once: let failover proceed
+        refetchedSourceKey = key
+        streamRepository.forgetResolvedStream(stream)
+        refetchRecent = RecentPlayedSource.of(
+            currentMediaType, currentMediaId, currentSeason, currentEpisode, stream, System.currentTimeMillis()
+        ).copy(url = null)
+        Log.i("PlayerViewModel", "re-fetching sources to replay \"${stream.source.take(60)}\" with a fresh link")
+        reloadStreams()
+        return true
+    }
+
     private fun loadRecentSource(mediaType: MediaType, mediaId: Int, season: Int?, episode: Int?) {
         recentSourcePlayTracker.reset()
         recentSourceGate.disarm()
         preparedStream = null
+        val forced = refetchRecent?.takeIf { it.appliesTo(mediaType, mediaId, season, episode) }
+        refetchRecent = null
+        if (forced != null) {
+            recentSourceLoad = kotlinx.coroutines.CompletableDeferred(forced)
+            return
+        }
         recentSourceLoad = viewModelScope.async {
             val recent = recentPlayedSourceRepository.get(mediaType, mediaId)
                 ?.takeIf { it.appliesTo(mediaType, mediaId, season, episode) }

@@ -1438,6 +1438,19 @@ fun PlayerScreen(
                                 }
                                 return
                             }
+                            // ARVIO Bilingual: a source reopened after the app was closed can carry a
+                            // link that has since expired (lists are kept on disk for hours, and a
+                            // restored player screen keeps its old URL). Before giving the source up,
+                            // fetch a fresh source list once and play the SAME source from it.
+                            if (!hasPlaybackStarted && isTransientStartupReadError && !startupSameSourceRefreshAttempted &&
+                                !userSelectedSourceManually && latestUiState.selectedStream != null
+                            ) {
+                                startupSameSourceRefreshAttempted = true
+                                if (viewModel.refetchSameSourceFresh()) {
+                                    playbackStartupDiag("same-source fresh re-fetch code=${error.errorCode}")
+                                    return
+                                }
+                            }
                             if (!hasPlaybackStarted && heavy && isTimeoutError) {
                                 // One-time full re-resolve of same source to refresh debrid URL/headers.
                                 if (!startupSameSourceRefreshAttempted) {
@@ -4006,6 +4019,16 @@ fun PlayerScreen(
                     currentPlaybackSpeed = speed
                     exoPlayer.setPlaybackSpeed(speed)
                     playerEngine.setPlaybackSpeed(speed)
+                },
+                onDownloadOffline = {
+                    val reason = viewModel.startOfflineDownload()
+                    android.widget.Toast.makeText(
+                        context,
+                        com.arflix.tv.ui.screens.player.subtitles.bilingual.bt(
+                            reason ?: "Download started — see Settings → Audio & Subtitles → Offline downloads"
+                        ),
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
                 },
                 onSkipIntro = {
                     val end = uiState.activeSkipInterval?.endMs

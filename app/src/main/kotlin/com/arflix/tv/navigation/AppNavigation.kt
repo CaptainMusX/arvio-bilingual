@@ -222,6 +222,24 @@ fun AppNavigation(
         }
     }
 
+    // ARVIO Bilingual: play a finished offline download (from Settings → Offline downloads).
+    val offlineContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(navController) {
+        com.arflix.tv.offline.OfflineLibrary.playRequests.collect { item ->
+            val file = com.arflix.tv.offline.OfflineLibrary.videoFile(offlineContext, item)
+            navController.navigate(
+                Screen.Player.createRoute(
+                    mediaType = item.mediaTypeEnum,
+                    mediaId = item.mediaId,
+                    seasonNumber = item.season,
+                    episodeNumber = item.episode,
+                    streamUrl = android.net.Uri.fromFile(file).toString(),
+                    preferredSourceName = "Offline"
+                )
+            )
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,

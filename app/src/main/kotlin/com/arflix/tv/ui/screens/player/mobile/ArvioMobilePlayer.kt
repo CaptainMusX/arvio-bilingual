@@ -143,6 +143,7 @@ fun ArvioMobilePlayer(
     onSelectAudioTrack: (AudioTrackInfo) -> Unit,
     onSelectSubtitleTrack: (Subtitle?) -> Unit,
     onSelectPlaybackSpeed: (Float) -> Unit,
+    onDownloadOffline: (() -> Unit)? = null,
     onSkipIntro: () -> Unit,
     onSkipOutro: () -> Unit,
     onPlayNextEpisode: () -> Unit,
@@ -216,6 +217,35 @@ fun ArvioMobilePlayer(
     var showSubtitlesSheet by remember { mutableStateOf(false) }
     var subtitleSheetInitialView by remember { mutableStateOf("root") }
     var showSpeedSheet by remember { mutableStateOf(false) }
+    // ARVIO Bilingual: Bilibili-style hold-for-3x. Holding the screen plays at 3x while the finger
+    // stays down; sliding up during the hold locks 3x until the pill is tapped.
+    var speedHoldActive by remember { mutableStateOf(false) }
+    var speedHoldLocked by remember { mutableStateOf(false) }
+    var speedBeforeHold by remember { mutableStateOf(1f) }
+    val latestSpeed by rememberUpdatedState(currentPlaybackSpeed)
+    val latestOnSelectSpeed by rememberUpdatedState(onSelectPlaybackSpeed)
+    val startSpeedHold: () -> Unit = {
+        if (!speedHoldActive && !speedHoldLocked) {
+            speedBeforeHold = latestSpeed
+            speedHoldActive = true
+            showControls = false
+            latestOnSelectSpeed(HOLD_SPEED)
+        }
+    }
+    val lockSpeedHold: () -> Unit = {
+        if (speedHoldActive) speedHoldLocked = true
+    }
+    val endSpeedHold: () -> Unit = {
+        if (speedHoldActive && !speedHoldLocked) {
+            speedHoldActive = false
+            latestOnSelectSpeed(speedBeforeHold)
+        }
+    }
+    val unlockSpeedHold: () -> Unit = {
+        speedHoldActive = false
+        speedHoldLocked = false
+        latestOnSelectSpeed(speedBeforeHold)
+    }
     var showMoreSettingsSheet by remember { mutableStateOf(false) }
     var isRepositioningSubtitles by remember { mutableStateOf(false) }
 
@@ -670,6 +700,9 @@ fun ArvioMobilePlayer(
                         sensitivity = 0.95f,
                         getBounds = { 0.0f..1.0f },
                         getInitialValue = { brightnessLevel },
+                        onHoldStart = startSpeedHold,
+                        onHoldLock = lockSpeedHold,
+                        onHoldEnd = endSpeedHold,
                         onActivate = {
                             showControls = false
                             brightnessIndicatorTrigger++
@@ -701,6 +734,9 @@ fun ArvioMobilePlayer(
                             strokeMin..strokeMax
                         },
                         getInitialValue = { volumeLevel },
+                        onHoldStart = startSpeedHold,
+                        onHoldLock = lockSpeedHold,
+                        onHoldEnd = endSpeedHold,
                         onActivate = {
                             showControls = false
                             volumeIndicatorTrigger++
@@ -727,6 +763,29 @@ fun ArvioMobilePlayer(
                     )
                 }
         )
+
+        // ── Hold-for-3x pill ──
+        if (speedHoldActive) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 28.dp)
+                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(50))
+                    .then(if (speedHoldLocked) Modifier.clickable { unlockSpeedHold() } else Modifier)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (speedHoldLocked) {
+                        com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("3x speed locked · tap to cancel")
+                    } else {
+                        com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("3x speed · slide up to lock")
+                    },
+                    style = ArflixTypography.caption.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                    color = Color.White
+                )
+            }
+        }
 
         // ── Double Tap Seek Left Feedback ──
         AnimatedVisibility(
@@ -1328,7 +1387,8 @@ fun ArvioMobilePlayer(
             onToggleAutoSkipIntro = onUpdateAutoSkipIntro,
             onToggleAutoSkipOutro = onUpdateAutoSkipOutro,
             onSelectAspectRatio = onSelectAspectRatio,
-            onClose = { showMoreSettingsSheet = false }
+            onClose = { showMoreSettingsSheet = false },
+            onDownloadOffline = onDownloadOffline
         )
 
         // Interactive Subtitle Repositioning Overlay
@@ -1394,17 +1454,52 @@ private enum class PlayerSwipeGestureState {
  * - Value is perfectly continuous at activation (zero jump).
  * - Horizontal gestures and wobbles are safely filtered without breaking taps or seek gestures.
  */
+private const val HOLD_SPEED = 3f
+
 private suspend fun PointerInputScope.detectPlayerVerticalAdjustmentGesture(
     thresholdPx: Float,
     sensitivity: Float = 0.95f,
     getBounds: (initialValue: Float) -> ClosedFloatingPointRange<Float> = { 0f..1f },
     getInitialValue: () -> Float,
+    onHoldStart: (() -> Unit)? = null,
+    onHoldLock: (() -> Unit)? = null,
+    onHoldEnd: (() -> Unit)? = null,
     onActivate: () -> Unit,
     onValueChange: (Float) -> Unit
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         val initialPosition = down.position
+        if (onHoldStart != null) {
+            // 0 = released early, 1 = moved (a normal swipe), null = held still → long press.
+            val early: Int? = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                var result = 0
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    val c = ev.changes.firstOrNull { it.id == down.id }
+                    if (c == null || !c.pressed) { result = 0; break }
+                    if ((c.position - initialPosition).getDistance() > viewConfiguration.touchSlop) { result = 1; break }
+                }
+                result
+            }
+            if (early == 0) return@awaitEachGesture
+            if (early == null) {
+                onHoldStart()
+                var locked = false
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                    c.consume()
+                    if (!c.pressed) break
+                    if (!locked && initialPosition.y - c.position.y > thresholdPx * 2f) {
+                        locked = true
+                        onHoldLock?.invoke()
+                    }
+                }
+                if (!locked) onHoldEnd?.invoke()
+                return@awaitEachGesture
+            }
+        }
         val initialValue = getInitialValue()
         val bounds = getBounds(initialValue)
         val playerHeight = size.height.toFloat().coerceAtLeast(1f)

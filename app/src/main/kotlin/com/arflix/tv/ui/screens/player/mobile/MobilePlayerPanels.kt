@@ -774,6 +774,10 @@ fun MobileSubtitlesSheet(
                     delayMs = subtitleDelayMs,
                     minMs = -MAX_SUBTITLE_OFFSET_MS,
                     maxMs = MAX_SUBTITLE_OFFSET_MS,
+                    // ARVIO Bilingual: fine-grained ±15 s slider + quick steps; typed values and
+                    // the step buttons still reach the full ±120 s.
+                    sliderRangeMs = 15_000L,
+                    quickStepsMs = listOf(1_000L, 5_000L, 10_000L),
                     onUpdateDelay = onUpdateSubtitleDelay
                 )
             }
@@ -1672,7 +1676,8 @@ fun MobileMoreSettingsSheet(
     onToggleAutoSkipOutro: (Boolean) -> Unit,
     onSelectAspectRatio: (String) -> Unit,
     onClose: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDownloadOffline: (() -> Unit)? = null
 ) {
     val viewStack = remember { mutableStateListOf("root") }
 
@@ -1733,6 +1738,20 @@ fun MobileMoreSettingsSheet(
                             checked = autoSkipOutro,
                             onToggle = { onToggleAutoSkipOutro(!autoSkipOutro) }
                         )
+                    }
+
+                    if (onDownloadOffline != null) {
+                        item { SectionHeader(com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("OFFLINE")) }
+                        item {
+                            NavRow(
+                                label = com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("Download for offline (with bilingual subtitles)"),
+                                meta = "",
+                                onClick = {
+                                    onDownloadOffline()
+                                    onClose()
+                                }
+                            )
+                        }
                     }
 
                     // Video Section
@@ -2016,9 +2035,13 @@ private fun DelayAdjusterContent(
     delayMs: Long,
     minMs: Long = -5000L,
     maxMs: Long = 5000L,
+    sliderRangeMs: Long? = null,
+    quickStepsMs: List<Long> = emptyList(),
     onUpdateDelay: (Long) -> Unit
 ) {
     var showInputDialog by remember { mutableStateOf(false) }
+    val sliderMin = sliderRangeMs?.let { -it } ?: minMs
+    val sliderMax = sliderRangeMs ?: maxMs
 
     Column(
         modifier = Modifier
@@ -2059,9 +2082,12 @@ private fun DelayAdjusterContent(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Slider(
-                value = delayMs.toFloat().coerceIn(minMs.toFloat(), maxMs.toFloat()),
-                onValueChange = { onUpdateDelay(it.roundToLong()) },
-                valueRange = minMs.toFloat()..maxMs.toFloat(),
+                value = delayMs.toFloat().coerceIn(sliderMin.toFloat(), sliderMax.toFloat()),
+                onValueChange = {
+                    val raw = it.roundToLong()
+                    onUpdateDelay(if (sliderRangeMs != null) (raw / 50L) * 50L else raw)
+                },
+                valueRange = sliderMin.toFloat()..sliderMax.toFloat(),
                 colors = SliderDefaults.colors(
                     thumbColor = if (delayMs != 0L) Color(0xFFFFB300) else Color.White,
                     activeTrackColor = if (delayMs != 0L) Color(0xFFFFB300) else Color.White,
@@ -2078,7 +2104,7 @@ private fun DelayAdjusterContent(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "${minMs / 1000}s",
+                    text = "${sliderMin / 1000}s",
                     color = MobilePlayerTokens.InkTertiary,
                     fontSize = 11.sp
                 )
@@ -2089,10 +2115,37 @@ private fun DelayAdjusterContent(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "+${maxMs / 1000}s",
+                    text = "+${sliderMax / 1000}s",
                     color = MobilePlayerTokens.InkTertiary,
                     fontSize = 11.sp
                 )
+            }
+        }
+
+        if (quickStepsMs.isNotEmpty()) {
+            val steps = quickStepsMs.sortedDescending().map { -it } + quickStepsMs.sorted()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                steps.forEach { step ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.10f))
+                            .clickable { onUpdateDelay((delayMs + step).coerceIn(minMs, maxMs)) }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = (if (step > 0) "+" else "-") + "${kotlin.math.abs(step) / 1000}s",
+                            color = MobilePlayerTokens.InkPrimary,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
         }
 
