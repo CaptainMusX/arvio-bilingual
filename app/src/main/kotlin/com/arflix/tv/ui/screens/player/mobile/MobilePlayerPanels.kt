@@ -950,6 +950,15 @@ fun MobileSubtitlesSheet(
                         .padding(horizontal = 10.dp, vertical = 2.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    // ARVIO Bilingual: delay sits at the top so it never needs scrolling past every track.
+                    item {
+                        val delayMeta = if (subtitleDelayMs != 0L) (if (subtitleDelayMs > 0) "+$subtitleDelayMs ms" else "$subtitleDelayMs ms") else "0 ms"
+                        NavRow(
+                            label = "Subtitle Delay",
+                            meta = delayMeta,
+                            onClick = { viewStack.add("subdelay") }
+                        )
+                    }
                     item {
                         val matchTitle = if (matchLanguageName.isNotBlank()) "Find Best Match ($matchLanguageName)" else "Find Best Match (Auto)"
                         Row(
@@ -1145,14 +1154,6 @@ fun MobileSubtitlesSheet(
                             label = "Subtitle Settings",
                             meta = "Size, style, font & more",
                             onClick = { viewStack.add("substyle") }
-                        )
-                    }
-                    item {
-                        val delayMeta = if (subtitleDelayMs != 0L) (if (subtitleDelayMs > 0) "+$subtitleDelayMs ms" else "$subtitleDelayMs ms") else "0 ms"
-                        NavRow(
-                            label = "Subtitle Delay",
-                            meta = delayMeta,
-                            onClick = { viewStack.add("subdelay") }
                         )
                     }
                 }

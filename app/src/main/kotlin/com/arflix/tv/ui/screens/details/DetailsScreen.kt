@@ -1002,9 +1002,45 @@ fun DetailsScreen(
             TelegramSearchRow.SEARCHING -> stringResource(R.string.telegram_search_row_searching)
             TelegramSearchRow.NONE -> stringResource(R.string.telegram_search_row_none)
         }
-        val selectorStreams = remember(uiState.streams, telegramRowLabel) {
-            if (telegramRowLabel == null) uiState.streams
+        // ARVIO Bilingual: a finished download of this movie / episode is offered first, marked,
+        // and plays from the file with its prepared subtitles (no network buffering).
+        LaunchedEffect(Unit) { com.arflix.tv.offline.OfflineLibrary.load(context) }
+        val offlineItems by com.arflix.tv.offline.OfflineLibrary.items.collectAsState()
+        val offlineIdentity = uiState.streamsEpisodeIdentity
+            ?: uiState.episodes.firstOrNull { it.identity == selectedEpisodeIdentity }?.identity
+            ?: uiState.episodes.getOrNull(episodeIndex)?.identity
+        val offlineRow = remember(offlineItems, offlineIdentity, mediaId, mediaType) {
+            offlineItems.firstOrNull { item ->
+                item.status == com.arflix.tv.offline.OfflineItem.STATUS_DONE && item.mediaId == mediaId &&
+                    (mediaType == MediaType.MOVIE || (offlineIdentity != null && (
+                        (item.season == offlineIdentity.tmdbSeason && item.episode == offlineIdentity.tmdbEpisode) ||
+                            (item.season == offlineIdentity.displaySeason && item.episode == offlineIdentity.displayEpisode)
+                        )))
+            }?.let { item ->
+                val file = com.arflix.tv.offline.OfflineLibrary.videoFile(context, item)
+                if (!file.isFile) return@let null
+                val subs = when {
+                    item.bilingualSrt != null -> com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("bilingual subtitles ready")
+                    item.originalSrt != null -> com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("subtitles ready")
+                    else -> ""
+                }
+                StreamSource(
+                    source = "⬇ " + com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("Downloaded · plays offline") +
+                        (if (subs.isNotBlank()) " · $subs" else "") +
+                        (if (item.sourceName.isNotBlank()) "\n" + item.sourceName else ""),
+                    addonName = com.arflix.tv.ui.screens.player.subtitles.bilingual.bt("Downloaded"),
+                    addonId = OFFLINE_ROW_ADDON_ID,
+                    quality = "",
+                    size = android.text.format.Formatter.formatShortFileSize(context, file.length()),
+                    sizeBytes = file.length(),
+                    url = android.net.Uri.fromFile(file).toString(),
+                )
+            }
+        }
+        val selectorStreams = remember(uiState.streams, telegramRowLabel, offlineRow) {
+            val base = if (telegramRowLabel == null) uiState.streams
             else uiState.streams + TELEGRAM_SEARCH_ROW.copy(source = telegramRowLabel)
+            if (offlineRow == null) base else listOf(offlineRow) + base
         }
         StreamSelector(
             isVisible = showStreamSelector,
@@ -1020,7 +1056,7 @@ fun DetailsScreen(
             pluginScrapersLoading = uiState.pluginScrapersLoading,
             loadingPluginNames = uiState.loadingPluginNames,
             onFocusedStream = { stream ->
-                if (!isTelegramSearchRow(stream)) viewModel.prewarmStreamsAround(stream, uiState.streams)
+                if (!isTelegramSearchRow(stream) && stream.addonId != OFFLINE_ROW_ADDON_ID) viewModel.prewarmStreamsAround(stream, uiState.streams)
             },
             onSelect = { stream ->
                 if (isTelegramSearchRow(stream)) {
@@ -4863,6 +4899,8 @@ private fun SimilarMediaCard(
 
 
 /** The "Search Telegram" row's stand-in source: listed under Telegram, never played. */
+private const val OFFLINE_ROW_ADDON_ID = "arvio_offline"
+
 private val TELEGRAM_SEARCH_ROW = StreamSource(
     source = "",
     addonName = "Telegram",

@@ -18,6 +18,17 @@ object BilingualStrings {
     }
 
     private val T: Map<String, Pair<String, String>> = mapOf(
+        "Downloaded · plays offline" to Pair("已下载 · 离线播放", "已下載 · 離線播放"),
+        "Downloaded" to Pair("已下载", "已下載"),
+        "bilingual subtitles ready" to Pair("双语字幕已就绪", "雙語字幕已就緒"),
+        "subtitles ready" to Pair("字幕已就绪", "字幕已就緒"),
+        "Subtitle timing matches the video's own track" to Pair("字幕时间轴与视频内嵌字幕一致", "字幕時間軸與影片內嵌字幕一致"),
+        "Subtitle aligned to the video's own track: {0}" to Pair("已按内嵌字幕时间轴校准：{0}", "已按內嵌字幕時間軸校準：{0}"),
+        "Syncing the subtitle to the audio…" to Pair("正在根据声音校准字幕…", "正在根據聲音校準字幕…"),
+        "Audio sync couldn't confirm the timing; the subtitle keeps its own timing" to Pair("声音校准未能确认时间轴，字幕保持原时间", "聲音校準未能確認時間軸，字幕保持原時間"),
+        "Subtitle synced to the audio: {0}" to Pair("已根据声音校准字幕：{0}", "已根據聲音校準字幕：{0}"),
+        "Subtitle re-timed to the audio" to Pair("已根据声音重新对齐字幕", "已根據聲音重新對齊字幕"),
+        "Waiting to resume…" to Pair("等待继续…", "等待繼續…"),
         "Downloads" to Pair("下载", "下載"),
         "Custom" to Pair("自定义", "自定義"),
         "DOWNLOAD LOCATION" to Pair("下载位置", "下載位置"),

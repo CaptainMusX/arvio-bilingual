@@ -52,14 +52,50 @@ class OfflineDownloadWorker(
         val item = OfflineLibrary.get(ctx, id) ?: return Result.failure()
         runCatching { setForeground(foregroundInfo(item.displayTitle, -1)) }
             .onFailure { Log.w(TAG, "foreground refused: ${it.message}") }
+        // Keep the CPU and Wi-Fi awake while the screen is off or another app is in front.
+        val power = ctx.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        val wake = runCatching {
+            power?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "arvio:offline-download")?.apply {
+                setReferenceCounted(false); acquire(6 * 60 * 60 * 1000L)
+            }
+        }.getOrNull()
+        val wifiManager = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+        @Suppress("DEPRECATION")
+        val wifi = runCatching {
+            wifiManager?.createWifiLock(
+                if (Build.VERSION.SDK_INT >= 29) android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF else android.net.wifi.WifiManager.WIFI_MODE_FULL,
+                "arvio:offline-download"
+            )?.apply { setReferenceCounted(false); acquire() }
+        }.getOrNull()
+        return try {
+            runDownload(id, item)
+        } finally {
+            runCatching { if (wake?.isHeld == true) wake.release() }
+            runCatching { if (wifi?.isHeld == true) wifi.release() }
+        }
+    }
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val id = inputData.getString(KEY_ID)
+        val title = id?.let { OfflineLibrary.get(applicationContext, it)?.displayTitle } ?: "ARVIO"
+        return foregroundInfo(title, -1)
+    }
+
+    private suspend fun runDownload(id: String, item: OfflineItem): Result {
+        val ctx = applicationContext
         return try {
             val afterVideo = if (item.status == OfflineItem.STATUS_DONE || isVideoComplete(item)) item else downloadVideo(item)
             prepareSubtitles(afterVideo)
             OfflineLibrary.update(ctx, id) { it.copy(status = OfflineItem.STATUS_DONE, message = it.message) }
             Result.success()
         } catch (e: kotlinx.coroutines.CancellationException) {
+            // A user pause already marked it paused; a system stop (Doze, memory) is retried by
+            // WorkManager on its own, so it shows as queued rather than paused.
             OfflineLibrary.update(ctx, id) {
-                if (it.status != OfflineItem.STATUS_DONE) it.copy(status = OfflineItem.STATUS_PAUSED) else it
+                when (it.status) {
+                    OfflineItem.STATUS_DONE, OfflineItem.STATUS_PAUSED -> it
+                    else -> it.copy(status = OfflineItem.STATUS_QUEUED, message = "Waiting to resume…")
+                }
             }
             throw e
         } catch (e: Exception) {
@@ -157,9 +193,10 @@ class OfflineDownloadWorker(
         val cues: List<OfflineSubtitles.Cue> = when {
             !item.subtitleUrl.isNullOrBlank() -> {
                 val raw = SubtitleSyncMatcher.loadRaw(item.subtitleUrl, item.subtitleLang)
-                raw?.let { SubtitleSyncMatcher.parseCues(it) }
+                val addon = raw?.let { SubtitleSyncMatcher.parseCues(it) }
                     ?.map { OfflineSubtitles.Cue(it.startMs, it.endMs, it.text) }
                     .orEmpty()
+                alignToEmbedded(OfflineLibrary.videoFile(ctx, item), addon)
             }
             else -> extractEmbedded(OfflineLibrary.videoFile(ctx, item), item.embeddedSubtitleLang)
         }
@@ -235,6 +272,33 @@ class OfflineDownloadWorker(
             customConfigProvider = { custom.current },
         )
         return service.takeIf { it.isConfigured() }
+    }
+
+    /**
+     * The downloaded file's own text subtitle track (any language) is authored against this exact
+     * cut: line the addon subtitle up with its timing before translating, so the offline copy
+     * needs no correction later.
+     */
+    private suspend fun alignToEmbedded(file: File, cues: List<OfflineSubtitles.Cue>): List<OfflineSubtitles.Cue> {
+        if (cues.size < 10) return cues
+        val reference = extractEmbedded(file, null)
+        if (reference.size < 10) return cues
+        val r = com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.align(
+            reference.map { com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Interval(it.startMs, it.endMs) },
+            cues.map { com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Interval(it.startMs, it.endMs) },
+        )
+        if (r == null || !r.confident) {
+            Log.i(TAG, "embedded alignment: not confident (${r?.matched}/${r?.considered})")
+            return cues
+        }
+        Log.i(TAG, "embedded alignment: x${r.scale} ${r.shiftMs}ms (${r.matched}/${r.considered})")
+        if (r.isPlainShift && kotlin.math.abs(r.shiftMs) < 80L) return cues
+        return cues.map {
+            it.copy(
+                startMs = (Math.round(it.startMs * r.scale) + r.shiftMs).coerceAtLeast(0L),
+                endMs = (Math.round(it.endMs * r.scale) + r.shiftMs).coerceAtLeast(1L),
+            )
+        }
     }
 
     /** Reads every cue of an embedded text track out of the downloaded file. */

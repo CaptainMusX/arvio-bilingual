@@ -151,6 +151,27 @@ object OfflineLibrary {
         val dir = item.dirPath ?: existingDir ?: File(downloadRoot(context), item.id).absolutePath
         upsert(context, item.copy(status = OfflineItem.STATUS_QUEUED, message = "", dirPath = dir))
         startWorker(context, item.id)
+        askToRunInBackground(context)
+    }
+
+    /**
+     * Battery optimisation (and vendor "app freezer" rules that follow it) stops downloads once
+     * the app leaves the screen. Asks once to exempt the app, the system's own dialog.
+     */
+    private fun askToRunInBackground(context: Context) {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences("arvio_offline", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("asked_battery_exemption", false)) return
+        val power = app.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return
+        if (android.os.Build.VERSION.SDK_INT < 23 || power.isIgnoringBatteryOptimizations(app.packageName)) return
+        prefs.edit().putBoolean("asked_battery_exemption", true).apply()
+        runCatching {
+            app.startActivity(
+                android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.parse("package:" + app.packageName))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.onFailure { Log.w(TAG, "battery exemption request failed: ${it.message}") }
     }
 
     fun retry(context: Context, id: String) {
@@ -161,6 +182,10 @@ object OfflineLibrary {
     private fun startWorker(context: Context, id: String) {
         val request = OneTimeWorkRequestBuilder<OfflineDownloadWorker>()
             .setInputData(workDataOf(OfflineDownloadWorker.KEY_ID to id))
+            // Expedited: started right away as a foreground job, so it keeps running in the background.
+            .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
+            .setBackoffCriteria(androidx.work.BackoffPolicy.LINEAR, 30, java.util.concurrent.TimeUnit.SECONDS)
             .addTag(WORK_TAG)
             .build()
         WorkManager.getInstance(context.applicationContext)
@@ -168,8 +193,8 @@ object OfflineLibrary {
     }
 
     fun pause(context: Context, id: String) {
-        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(workName(id))
         update(context, id) { if (it.status in ACTIVE) it.copy(status = OfflineItem.STATUS_PAUSED) else it }
+        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(workName(id))
     }
 
     fun delete(context: Context, id: String) {

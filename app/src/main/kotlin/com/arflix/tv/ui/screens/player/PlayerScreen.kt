@@ -1173,6 +1173,13 @@ fun PlayerScreen(
         viewModel.bufferedReferenceCuesProvider = { max ->
             aiRenderersFactory.extractBufferedReferenceCues(max)
         }
+        viewModel.embeddedTimingReferenceProvider = {
+            embeddedSubtitleStore.tracks().filter { !it.isForced }.map { track ->
+                embeddedSubtitleStore.cues(track.trackId).map {
+                    com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Interval(it.startMs, it.endMs)
+                }
+            }
+        }
     }
     // The auto-match correction reaches the renderer only while its own track is the selected one.
     LaunchedEffect(uiState.autoSync, uiState.autoSyncSubtitleKey, uiState.selectedSubtitle) {
@@ -1188,6 +1195,7 @@ fun PlayerScreen(
             viewModel.bufferedReferenceIntervalsProvider = null
             viewModel.bufferedCueTextsProvider = null
             viewModel.bufferedReferenceCuesProvider = null
+            viewModel.embeddedTimingReferenceProvider = null
             viewModel.selectedTextTrackProvider = null
             viewModel.geminiLiveService.disconnect()
         }
