@@ -1211,7 +1211,8 @@ fun PlayerScreen(
             )
             .setTargetBufferBytes(playbackBufferProfile.targetBufferBytes)
             .setPrioritizeTimeOverSizeThresholds(playbackBufferProfile.prioritizeTimeOverSizeThresholds)
-            .setBackBuffer(playbackBufferProfile.backBufferMs, false)
+            // retainBackBufferFromKeyframe: a seek back can start decoding right away.
+            .setBackBuffer(playbackBufferProfile.backBufferMs, true)
             .build()
 
         ExoPlayer.Builder(context)
@@ -2744,6 +2745,24 @@ fun PlayerScreen(
     LaunchedEffect(subtitleSyncOffsetMs) {
         aiRenderersFactory.syncOffsetUs.set(subtitleSyncOffsetMs * 1000L)
     }
+    // ARVIO Bilingual: every subtitle track has its own timing, so the manual delay tuned for one
+    // track is not carried over to another (an online subtitle → the embedded one). A re-timed or
+    // locally cached copy of the same track, or AI translation on top of it, keeps the delay.
+    val subtitleTrackKey = uiState.selectedSubtitle?.let { sub ->
+        if (sub.isEmbedded) "embedded|${sub.id}"
+        else "${sub.provider}|${sub.id.removeSuffix(com.arflix.tv.ui.screens.player.subtitles.RETIMED_SUBTITLE_ID_SUFFIX)}"
+    }
+    var lastSubtitleTrackKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(subtitleTrackKey) {
+        val previous = lastSubtitleTrackKey
+        if (subtitleTrackKey != null) {
+            if (previous != null && previous != subtitleTrackKey && subtitleSyncOffsetMs != 0L) {
+                subtitleSyncOffsetMs = 0L
+            }
+            lastSubtitleTrackKey = subtitleTrackKey
+            viewModel.onShownSubtitleTrackChanged()
+        }
+    }
 
     // When cast starts: keep controls permanently visible.
     LaunchedEffect(isCasting) {
@@ -4133,6 +4152,8 @@ fun PlayerScreen(
                 onFindBestMatch = {
                     viewModel.runFindBestMatch()
                 },
+                onAlignToEmbedded = { viewModel.alignSubtitleToEmbedded() },
+                onSyncToAudio = { viewModel.syncSubtitleToAudio() },
                 onActivateAiTranslation = {
                     viewModel.toggleAiTranslation()
                 },
@@ -6820,10 +6841,15 @@ private fun buildPlaybackBufferProfile(
         heapMb <= 512 -> 6_500
         else -> 8_000
     }
+    // ARVIO Bilingual: keep what was just played in memory so a short rewind (the 10 s skip-back,
+    // a swipe back) seeks inside the buffer instead of re-opening the stream. It counts against
+    // targetBufferBytes, so on size-limited devices it trades forward buffer, never extra RAM;
+    // longer rewinds are served from the on-disk playback cache (PlaybackCacheSingleton).
     val backBufferMs = when {
-        isLowRamDevice || heapMb <= 256 -> 2_000
-        heapMb <= 384 -> 3_000
-        else -> 5_000
+        isLowRamDevice || heapMb <= 256 -> 10_000
+        heapMb <= 384 -> 15_000
+        heapMb <= 768 -> 30_000
+        else -> 20_000 // time-prioritised: the back buffer is not capped by bytes there
     }
 
     return PlaybackBufferProfile(
@@ -7089,7 +7115,11 @@ private object PlaybackCacheSingleton {
         return instance ?: synchronized(this) {
             instance ?: run {
                 val cacheDir = java.io.File(context.applicationContext.cacheDir, "media3_playback_cache").apply { mkdirs() }
-                val evictor = LeastRecentlyUsedCacheEvictor(256L * 1024L * 1024L)
+                // ARVIO Bilingual: was 256 MB — barely a minute of a 1080p remux, so anything played
+                // earlier had to be re-downloaded on a rewind. Now ~10% of free space, 512 MB–3 GB.
+                val usable = runCatching { cacheDir.usableSpace }.getOrDefault(0L)
+                val cacheBytes = (usable / 10).coerceIn(512L * 1024L * 1024L, 3L * 1024L * 1024L * 1024L)
+                val evictor = LeastRecentlyUsedCacheEvictor(cacheBytes)
                 SimpleCache(cacheDir, evictor, StandaloneDatabaseProvider(context.applicationContext)).also {
                     instance = it
                 }

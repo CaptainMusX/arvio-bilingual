@@ -18,6 +18,14 @@ object BilingualStrings {
     }
 
     private val T: Map<String, Pair<String, String>> = mapOf(
+        "Pick an online subtitle first" to Pair("请先选择一条在线字幕", "請先選擇一條線上字幕"),
+        "This video has no embedded text subtitle to align to" to Pair("此视频没有可用于校准的内嵌文字字幕", "此影片沒有可用於校準的內嵌文字字幕"),
+        "Aligning to the embedded subtitle…" to Pair("正在按内嵌字幕校准…", "正在按內嵌字幕校準…"),
+        "Sync by hearing isn't available in this build" to Pair("此版本不支持按声音校准", "此版本不支援按聲音校準"),
+        "Couldn't download the subtitle to align it" to Pair("无法下载字幕，校准失败", "無法下載字幕，校準失敗"),
+        "Couldn't match this subtitle to the embedded track's timing" to Pair("无法将此字幕与内嵌字幕时间轴匹配", "無法將此字幕與內嵌字幕時間軸匹配"),
+        "The embedded subtitle hasn't loaded yet; try again in a moment" to Pair("内嵌字幕尚未加载，请稍后再试", "內嵌字幕尚未載入，請稍後再試"),
+        "Audio sync couldn't start for this subtitle" to Pair("无法为此字幕启动声音校准", "無法為此字幕啟動聲音校準"),
         "Downloaded · plays offline" to Pair("已下载 · 离线播放", "已下載 · 離線播放"),
         "Downloaded" to Pair("已下载", "已下載"),
         "bilingual subtitles ready" to Pair("双语字幕已就绪", "雙語字幕已就緒"),

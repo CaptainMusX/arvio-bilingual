@@ -3678,6 +3678,7 @@ class PlayerViewModel @Inject constructor(
             if (!audioSyncSwitching) {
                 audioSyncTarget = null
                 audioSync?.stop()
+                lastCalibratedKey = calibrationKey(subtitle)
                 calibrateUserPick(subtitle)
             }
         }
@@ -3774,6 +3775,7 @@ class PlayerViewModel @Inject constructor(
                 isAiTranslating = true,
                 subtitleSelectionNonce = _uiState.value.subtitleSelectionNonce + 1
             )
+            maybeAutoCalibrate(served)
             return
         }
         translationManager.isEnabled = false
@@ -3783,6 +3785,79 @@ class PlayerViewModel @Inject constructor(
             isAiTranslating = false,
             subtitleSelectionNonce = _uiState.value.subtitleSelectionNonce + 1
         )
+        maybeAutoCalibrate(served)
+    }
+
+    /** ARVIO Bilingual: the external track last calibrated automatically (stream|provider|id). */
+    private var lastCalibratedKey: String? = null
+
+    private fun calibrationKey(sub: Subtitle): String =
+        "${_uiState.value.selectedStreamUrl}|${sub.provider}|${sub.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)}"
+
+    /**
+     * ARVIO Bilingual: every switch to an external subtitle track — the user's or an automatic one —
+     * is lined up once: against the video's embedded text track when there is one, else by audio.
+     * A running match scan owns its own timing, and a re-timed copy is the result of a calibration.
+     */
+    private fun maybeAutoCalibrate(served: Subtitle) {
+        if (served.isEmbedded || served.isBitmap || served.provider == "Offline" || offlinePlayback) return
+        if (served.id.endsWith(RETIMED_SUBTITLE_ID_SUFFIX) || audioSyncSwitching) return
+        if (_uiState.value.isFindingBestMatch || findMatchJob?.isActive == true) return
+        val key = calibrationKey(served)
+        if (key == lastCalibratedKey) return
+        lastCalibratedKey = key
+        if (_uiState.value.autoSyncSubtitleKey == "${served.provider}|${served.id}") return
+        if (audioSyncTarget?.let { it.provider == served.provider && it.id == served.id } == true) return
+        Log.i("SubMatch", "auto calibration on track switch: \"${served.label}\"")
+        calibrateUserPick(served)
+    }
+
+    /** Called by the screen whenever the shown subtitle track changes, whichever path selected it. */
+    fun onShownSubtitleTrackChanged() {
+        val shown = _uiState.value.selectedSubtitle ?: return
+        maybeAutoCalibrate(shown)
+    }
+
+    /** The external subtitle on screen (also the AI translation's source), as listed by the addons. */
+    private fun currentExternalSubtitle(): Subtitle? {
+        val sel = (if (_uiState.value.isAiTranslating) aiSourceSubtitle else null) ?: _uiState.value.selectedSubtitle ?: return null
+        if (sel.isEmbedded || sel.isBitmap) return null
+        return _uiState.value.subtitles.firstOrNull {
+            !it.isEmbedded && it.provider == sel.provider && it.id == sel.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
+        } ?: sel
+    }
+
+    /** ARVIO Bilingual menu: align the current external subtitle to the video's embedded text track. */
+    fun alignSubtitleToEmbedded() {
+        val sub = currentExternalSubtitle() ?: run {
+            showSyncToast("Pick an online subtitle first")
+            return
+        }
+        if (_uiState.value.subtitles.none { it.isEmbedded && !it.isBitmap }) {
+            showSyncToast("This video has no embedded text subtitle to align to")
+            return
+        }
+        audioSyncWorkJob?.cancel()
+        audioSync?.stop()
+        audioSyncTarget = null
+        lastCalibratedKey = calibrationKey(sub)
+        showSyncToast("Aligning to the embedded subtitle…")
+        calibrateUserPick(sub, embeddedOnly = true)
+    }
+
+    /** ARVIO Bilingual menu: sync the current external subtitle to the audio (speech recognition). */
+    fun syncSubtitleToAudio() {
+        val sub = currentExternalSubtitle() ?: run {
+            showSyncToast("Pick an online subtitle first")
+            return
+        }
+        if (!BuildConfig.AUDIO_SYNC_AVAILABLE) {
+            showSyncToast("Sync by hearing isn't available in this build")
+            return
+        }
+        embeddedCalibrationJob?.cancel()
+        lastCalibratedKey = calibrationKey(sub)
+        calibrateUserPickByAudio(sub, force = true)
     }
 
     /** Cancel a running/queued "Find best match" scan and clear its transient state. */
@@ -6562,9 +6637,9 @@ class PlayerViewModel @Inject constructor(
     }
 
     /** Created on first use (a scan), and never where sync by hearing can't run. */
-    private fun audioSyncOrNull(): com.arflix.tv.ui.screens.player.audiosync.ArvioAudioSync? {
+    private fun audioSyncOrNull(force: Boolean = false): com.arflix.tv.ui.screens.player.audiosync.ArvioAudioSync? {
         audioSyncInstance?.let { return it }
-        if (!hearingAvailable) return null
+        if (!hearingAvailable && !(force && BuildConfig.AUDIO_SYNC_AVAILABLE)) return null
         return com.arflix.tv.ui.screens.player.audiosync.ArvioAudioSync(
             context = context,
             scope = viewModelScope,
@@ -6759,7 +6834,7 @@ class PlayerViewModel @Inject constructor(
      * its own text subtitle track (any language), its timing is the reference — exact, no audio
      * needed. Otherwise (or when it cannot be matched with confidence) the audio sync measures it.
      */
-    private fun calibrateUserPick(pick: Subtitle) {
+    private fun calibrateUserPick(pick: Subtitle, embeddedOnly: Boolean = false) {
         embeddedCalibrationJob?.cancel()
         if (pick.isEmbedded || pick.isBitmap || pick.provider == "Offline") return
         val original = _uiState.value.subtitles.firstOrNull {
@@ -6770,15 +6845,23 @@ class PlayerViewModel @Inject constructor(
         embeddedCalibrationJob = viewModelScope.launch {
             val raw = (preloadedCopyFor(original)?.url?.let { SubtitleSyncMatcher.loadRaw(it, original.lang) })
                 ?: SubtitleSyncMatcher.loadRaw(original.url, original.lang)
-            if (raw == null) { calibrateUserPickByAudio(pick); return@launch }
+            if (raw == null) {
+                if (embeddedOnly) showSyncToast("Couldn't download the subtitle to align it")
+                else calibrateUserPickByAudio(pick)
+                return@launch
+            }
             val cues = withContext(Dispatchers.Default) { SubtitleSyncMatcher.parseCues(raw) }
             val target = cues.map { com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Interval(it.startMs, it.endMs) }
-            fun stillMine() = _uiState.value.selectedStreamUrl == streamUrl && userLockedSubtitleId == lockedId
+            fun stillMine() = _uiState.value.selectedStreamUrl == streamUrl && isCurrentExternal(lockedId)
             var sawReference = false
+            // The container's index (Matroska Cues) carries the embedded tracks' cue times for the
+            // WHOLE file without downloading media — a far stronger reference than the few minutes
+            // the extractor has demuxed so far. Read once; the demuxed slice is added on every try.
+            val indexed = indexedEmbeddedReference(streamUrl)
             // The extractor reads ahead of playback, so the reference grows; retry for a while.
             for (attempt in 0 until EMBEDDED_CALIBRATION_ATTEMPTS) {
                 if (!stillMine()) return@launch
-                val refs = runCatching { embeddedTimingReferenceProvider?.invoke() }.getOrNull().orEmpty()
+                val refs = (indexed + runCatching { embeddedTimingReferenceProvider?.invoke() }.getOrNull().orEmpty())
                     .filter { it.size >= com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.MIN_MATCHED }
                 if (refs.isNotEmpty()) {
                     sawReference = true
@@ -6795,12 +6878,41 @@ class PlayerViewModel @Inject constructor(
                 } else if (attempt >= 3 && !sawReference) {
                     break // No embedded text track: the audio has to do it.
                 }
+                if (embeddedOnly && attempt >= 6) break // The user is waiting on the menu action.
                 delay(EMBEDDED_CALIBRATION_INTERVAL_MS)
             }
             if (!stillMine()) return@launch
+            if (embeddedOnly) {
+                Log.i("SubMatch", "embedded calibration (menu): no confident match for \"${original.label}\" (reference=$sawReference)")
+                showSyncToast(
+                    if (sawReference) "Couldn't match this subtitle to the embedded track's timing"
+                    else "The embedded subtitle hasn't loaded yet; try again in a moment"
+                )
+                return@launch
+            }
             Log.i("SubMatch", "embedded calibration: no confident match for \"${original.label}\" (reference=$sawReference) — trying the audio")
             calibrateUserPickByAudio(pick)
         }
+    }
+
+    /** True while the external track [baseId] is the one the user locked, or (no lock) the one shown. */
+    private fun isCurrentExternal(baseId: String): Boolean {
+        userLockedSubtitleId?.let { return it == baseId }
+        val shown = (if (_uiState.value.isAiTranslating) aiSourceSubtitle else null) ?: _uiState.value.selectedSubtitle
+        return shown != null && !shown.isEmbedded && shown.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX) == baseId
+    }
+
+    /** Whole-file embedded subtitle timelines from the container index, or empty (not Matroska, no index, timeout). */
+    private suspend fun indexedEmbeddedReference(streamUrl: String?):
+        List<List<com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Interval>> {
+        val url = streamUrl?.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: return emptyList()
+        val headers = _uiState.value.selectedStream?.behaviorHints?.proxyHeaders?.request.orEmpty()
+        val timeline = runCatching {
+            com.arflix.tv.ui.screens.player.subtitles.MatroskaIndexSource.load(url, headers) { Log.i("SubMatch", it) }
+        }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }.getOrNull() ?: return emptyList()
+        return timeline.tracks.filter { !it.isForced }.map { track ->
+            track.cues.map { com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Interval(it.startMs, it.endMs) }
+        }.also { Log.i("SubMatch", "embedded calibration: container index gave ${it.size} track(s) ${it.map { t -> t.size }}") }
     }
 
     private fun applyEmbeddedCalibration(
@@ -6840,30 +6952,36 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private fun calibrateUserPickByAudio(pick: Subtitle) {
+    private fun calibrateUserPickByAudio(pick: Subtitle, force: Boolean = false) {
         if (pick.isEmbedded || pick.isBitmap) return
-        if (!hearingAvailable) {
+        if (!hearingAvailable && !force) {
             Log.i("SubMatch", "audio calibration: Sync by hearing is off")
             return
         }
-        val sync = audioSyncOrNull() ?: return
-        if (!sync.canTakeOver) {
+        val sync = audioSyncOrNull(force) ?: run {
+            if (force) showSyncToast("Sync by hearing isn't available in this build")
+            return
+        }
+        if (!sync.canTakeOver && !force) {
             Log.i("SubMatch", "audio calibration: audio sync fallback disabled in settings")
             return
         }
         val original = _uiState.value.subtitles.firstOrNull {
             !it.isEmbedded && it.provider == pick.provider && it.id == pick.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
         } ?: pick
-        if (!(original.url.startsWith("http://") || original.url.startsWith("https://"))) return
+        if (original.url.isBlank()) return
         val streamUrl = _uiState.value.selectedStreamUrl
         val lockedId = original.id
         audioSyncWorkJob?.cancel()
         audioSyncWorkJob = viewModelScope.launch {
             val raw = (preloadedCopyFor(original)?.url?.let { SubtitleSyncMatcher.loadRaw(it, original.lang) })
                 ?: SubtitleSyncMatcher.loadRaw(original.url, original.lang)
-                ?: return@launch
+                ?: run {
+                    if (force) showSyncToast("Couldn't download the subtitle to align it")
+                    return@launch
+                }
             val cues = withContext(Dispatchers.Default) { SubtitleSyncMatcher.parseCues(raw) }
-            if (_uiState.value.selectedStreamUrl != streamUrl || userLockedSubtitleId != lockedId || !hearingAvailable) return@launch
+            if (_uiState.value.selectedStreamUrl != streamUrl || !isCurrentExternal(lockedId) || (!hearingAvailable && !force)) return@launch
             armAudioSync()
             audioSyncTarget = original
             audioSyncRaw = raw
@@ -6876,8 +6994,11 @@ class PlayerViewModel @Inject constructor(
                     userCalibrationKey = null
                     showSyncToast("Audio sync couldn't confirm the timing; the subtitle keeps its own timing")
                 }
-            }, holdUntilConfirmed = false)
-            if (!started) userCalibrationKey = null
+            }, holdUntilConfirmed = false, force = force)
+            if (!started) {
+                userCalibrationKey = null
+                if (force) showSyncToast("Audio sync couldn't start for this subtitle")
+            }
         }
     }
 

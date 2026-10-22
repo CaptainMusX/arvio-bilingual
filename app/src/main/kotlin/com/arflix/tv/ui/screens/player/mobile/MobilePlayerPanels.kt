@@ -670,6 +670,8 @@ fun MobileSubtitlesSheet(
     isFindingBestMatch: Boolean = false,
     matchLanguageName: String = "",
     onFindBestMatch: () -> Unit = {},
+    onAlignToEmbedded: () -> Unit = {},
+    onSyncToAudio: () -> Unit = {},
     isAiTranslating: Boolean = false,
     isAiAvailable: Boolean = false,
     aiTargetLanguageName: String = "",
@@ -983,6 +985,29 @@ fun MobileSubtitlesSheet(
                             }
                             SubtitleBadge(text = if (isFindingBestMatch) "Scanning" else "Auto Sync")
                         }
+                    }
+
+                    // ARVIO Bilingual: the two timing tools as separate actions on the current
+                    // online subtitle (they also run automatically on every track switch).
+                    item {
+                        NavRow(
+                            label = "Align to Embedded Subtitle",
+                            meta = "Embedded timing",
+                            onClick = {
+                                onAlignToEmbedded()
+                                onClose()
+                            }
+                        )
+                    }
+                    item {
+                        NavRow(
+                            label = "Sync to Audio",
+                            meta = "Speech recognition",
+                            onClick = {
+                                onSyncToAudio()
+                                onClose()
+                            }
+                        )
                     }
 
                     item {

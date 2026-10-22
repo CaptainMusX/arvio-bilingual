@@ -1976,7 +1976,11 @@
 "Searching for TVs on this Wi-Fi…": "正在搜尋同一 Wi-Fi 下的電視…",
 "No TV found. Make sure the phone and TV are on the same Wi-Fi and the TV's casting (DLNA / Chromecast) is turned on.": "未找到電視。請確認手機與電視連線同一 Wi-Fi，並已開啟電視的投屏功能（DLNA / Chromecast）。",
 "The TV refused this video format": "電視無法播放此影片格式",
-"This source plays through the phone and can't be cast. Pick a direct or debrid source.": "此來源需透過手機本地播放，無法投屏。請選擇直鏈或 Debrid 來源。"
+"This source plays through the phone and can't be cast. Pick a direct or debrid source.": "此來源需透過手機本地播放，無法投屏。請選擇直鏈或 Debrid 來源。",
+"Align to Embedded Subtitle": "按內嵌字幕校準",
+"Embedded timing": "內嵌字幕時間軸",
+"Sync to Audio": "按聲音校準",
+"Speech recognition": "語音識別"
 },
 "patterns": [
 [
