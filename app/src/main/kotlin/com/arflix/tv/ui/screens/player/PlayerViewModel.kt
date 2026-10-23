@@ -606,6 +606,9 @@ class PlayerViewModel @Inject constructor(
      * track of the playing file (any language), one list per track. The timing reference for
      * lining up an external subtitle (see [calibrateUserPick]).
      */
+    /** ARVIO Plus: the embedded text tracks' demuxed cues WITH text — for the AI line-matching fallback. */
+    @Volatile var embeddedTextReferenceProvider: (() -> List<List<SubtitleSyncMatcher.TimedCue>>)? = null
+
     @Volatile var embeddedTimingReferenceProvider:
         (() -> List<List<com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Interval>>)? = null
 
@@ -6858,9 +6861,31 @@ class PlayerViewModel @Inject constructor(
             // WHOLE file without downloading media — a far stronger reference than the few minutes
             // the extractor has demuxed so far. Read once; the demuxed slice is added on every try.
             val indexed = indexedEmbeddedReference(streamUrl)
+            var aiTries = 0
             // The extractor reads ahead of playback, so the reference grows; retry for a while.
             for (attempt in 0 until EMBEDDED_CALIBRATION_ATTEMPTS) {
                 if (!stillMine()) return@launch
+                // Timing alone did not settle it after a couple of tries: ask the translation model
+                // which lines of the embedded track and this subtitle say the same thing.
+                if (attempt >= 2 && aiTries < 2 && sawReference) {
+                    val textRefs = runCatching { embeddedTextReferenceProvider?.invoke() }.getOrNull().orEmpty()
+                        .filter { it.size >= EMBEDDED_AI_MIN_REF_LINES }
+                    if (textRefs.isNotEmpty() && aiSubtitleEnabled && aiKeyReady) {
+                        aiTries++
+                        val offset = measureEmbeddedOffsetWithAi(textRefs.maxBy { it.size }, cues, original.label, aiTries)
+                        if (offset != null) {
+                            if (!stillMine()) return@launch
+                            applyEmbeddedCalibration(
+                                original, raw,
+                                com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Result(
+                                    scale = 1.0, shiftMs = offset, matched = 0, considered = 0, prominence = 0.0
+                                ),
+                                viaAi = true,
+                            )
+                            return@launch
+                        }
+                    }
+                }
                 val refs = (indexed + runCatching { embeddedTimingReferenceProvider?.invoke() }.getOrNull().orEmpty())
                     .filter { it.size >= com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.MIN_MATCHED }
                 if (refs.isNotEmpty()) {
@@ -6915,10 +6940,62 @@ class PlayerViewModel @Inject constructor(
         }.also { Log.i("SubMatch", "embedded calibration: container index gave ${it.size} track(s) ${it.map { t -> t.size }}") }
     }
 
+    /**
+     * ARVIO Plus: the AI fallback for embedded calibration. The translation model pairs lines of the
+     * embedded track with lines of the subtitle that say the same thing (any two languages); the
+     * median time difference of the pairs that agree is the shift. Only a clear majority within
+     * ±[MATCH_AI_OUTLIER_MS] of the median is accepted, so a few wrong pairings cannot move it.
+     */
+    private suspend fun measureEmbeddedOffsetWithAi(
+        reference: List<SubtitleSyncMatcher.TimedCue>,
+        candidate: List<SubtitleSyncMatcher.TimedCue>,
+        label: String,
+        attempt: Int,
+    ): Long? {
+        val dialogue = reference.filter { it.text.isNotBlank() && !isSdhOnly(it.text) && it.text.trim().length >= 4 }
+        if (dialogue.size < EMBEDDED_AI_MIN_REF_LINES) return null
+        // A second try uses a later slice of the reference (more of it has been demuxed by then).
+        val start = if (attempt <= 1) (dialogue.size / 4) else (dialogue.size / 2)
+        val refs = dialogue.drop(start).take(EMBEDDED_AI_REF_LINES).takeIf { it.size >= EMBEDDED_AI_MIN_REF_LINES }
+            ?: dialogue.takeLast(EMBEDDED_AI_REF_LINES)
+        val from = refs.first().startMs - EMBEDDED_AI_MAX_SHIFT_MS
+        val to = refs.last().endMs + EMBEDDED_AI_MAX_SHIFT_MS
+        val window = candidate.filter { it.endMs >= from && it.startMs <= to && it.text.isNotBlank() }
+        if (window.size < EMBEDDED_AI_MIN_PAIRS) return null
+        // Keep the window near the reference when it is very long (bounded request size).
+        val trimmed = if (window.size <= EMBEDDED_AI_CANDIDATE_LINES) window else {
+            val mid = (refs.first().startMs + refs.last().endMs) / 2
+            window.sortedBy { kotlin.math.abs((it.startMs + it.endMs) / 2 - mid) }
+                .take(EMBEDDED_AI_CANDIDATE_LINES).sortedBy { it.startMs }
+        }
+        Log.i("SubMatch", "[ai-embedded] \"$label\" asking the model: ${refs.size} embedded lines vs ${trimmed.size} subtitle lines")
+        val matches = runCatching {
+            translationService.matchSubtitleLines(
+                refs.map { it.text.replace("\n", " ") },
+                trimmed.map { it.text.replace("\n", " ") }
+            )
+        }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }.getOrNull()
+        if (matches.isNullOrEmpty()) {
+            Log.i("SubMatch", "[ai-embedded] \"$label\" no usable answer")
+            return null
+        }
+        val deltas = matches.map { refs[it.referenceIndex].startMs - trimmed[it.candidateIndex].startMs }.sorted()
+        val median = deltas[deltas.size / 2]
+        val kept = deltas.filter { kotlin.math.abs(it - median) <= MATCH_AI_OUTLIER_MS }
+        if (kept.size < EMBEDDED_AI_MIN_PAIRS || kept.size * 2 < deltas.size + 1) {
+            Log.i("SubMatch", "[ai-embedded] \"$label\" pairs disagree: $deltas")
+            return null
+        }
+        val offset = kept.average().toLong()
+        Log.i("SubMatch", "[ai-embedded] \"$label\" offset=${offset}ms from ${kept.size}/${deltas.size} pairs")
+        return offset
+    }
+
     private fun applyEmbeddedCalibration(
         sub: Subtitle,
         raw: String,
         r: com.arflix.tv.ui.screens.player.subtitles.bilingual.EmbeddedTimingAligner.Result,
+        viaAi: Boolean = false,
     ) {
         Log.i(
             "SubMatch",
@@ -6931,7 +7008,11 @@ class PlayerViewModel @Inject constructor(
                 return
             }
             applyAutoSync(sub, SubtitleAutoSync.ofMs(r.shiftMs))
-            showSyncToast("Subtitle aligned to the video's own track: {0}", formatShift(r.shiftMs))
+            showSyncToast(
+                if (viaAi) "Subtitle aligned to the video's own track by AI line matching: {0}"
+                else "Subtitle aligned to the video's own track: {0}",
+                formatShift(r.shiftMs)
+            )
         } else {
             val rewritten = SubtitleSyncMatcher.retimeTimestamps(raw) { start, end ->
                 (kotlin.math.round(start * r.scale).toLong() + r.shiftMs) to (kotlin.math.round(end * r.scale).toLong() + r.shiftMs)
@@ -9184,6 +9265,11 @@ class PlayerViewModel @Inject constructor(
     companion object {
         private const val EMBEDDED_CALIBRATION_ATTEMPTS = 24
         private const val EMBEDDED_CALIBRATION_INTERVAL_MS = 5_000L
+        private const val EMBEDDED_AI_REF_LINES = 12
+        private const val EMBEDDED_AI_MIN_REF_LINES = 6
+        private const val EMBEDDED_AI_CANDIDATE_LINES = 90
+        private const val EMBEDDED_AI_MIN_PAIRS = 4
+        private const val EMBEDDED_AI_MAX_SHIFT_MS = 60_000L
         private const val TAG = "PlayerViewModel"
 
         // ── "Find best match" tuning ──────────────────────────────────────────

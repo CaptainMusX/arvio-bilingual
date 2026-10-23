@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
@@ -125,6 +126,8 @@ fun OfflineDownloadsPage() {
         color = Color.White.copy(alpha = 0.5f), fontSize = 11.5.sp,
         modifier = Modifier.padding(horizontal = 4.dp)
     )
+
+    PlaybackCacheSection()
 
     MobileSettingsCategory(title = bt("OFFLINE DOWNLOADS")) {
         if (items.isEmpty()) {
@@ -279,4 +282,105 @@ private fun sizeText(done: Long, total: Long): String {
         else -> "${b / 1024} KB"
     }
     return if (total > 0) "${f(done)} / ${f(total)}" else if (done > 0) f(done) else ""
+}
+
+
+/** Settings → Downloads → Playback cache: how much already-watched video is kept for instant rewinds. */
+@Composable
+private fun PlaybackCacheSection() {
+    val context = LocalContext.current
+    val cache = com.arflix.tv.player.cache.PlaybackCache
+    var limitGb by remember { mutableStateOf(cache.limitGb(context)) }
+    var usedBytes by remember { mutableStateOf(0L) }
+    var maxBytes by remember { mutableStateOf(0L) }
+    var showDialog by remember { mutableStateOf(false) }
+    var refresh by remember { mutableStateOf(0) }
+    LaunchedEffect(refresh) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            cache.get(context)
+            usedBytes = cache.usedBytes()
+            maxBytes = cache.maxAllowedBytes(context)
+        }
+    }
+    val effective = minOf(limitGb.toLong() shl 30, maxBytes.takeIf { it > 0 } ?: (limitGb.toLong() shl 30))
+    MobileSettingsCategory(title = bt("PLAYBACK CACHE")) {
+        MobileSettingsRow(
+            icon = Icons.Default.Download,
+            title = bt("Playback cache size"),
+            subtitle = bt("Used") + " " + sizeText(usedBytes, -1).ifBlank { "0 MB" } +
+                if (effective < (limitGb.toLong() shl 30)) "  · " + bt("limited by free space to") + " " + sizeText(effective, -1) else "",
+            value = "$limitGb GB",
+            isToggle = false,
+            showDivider = false,
+            onClick = { refresh++; showDialog = true }
+        )
+    }
+    Text(
+        bt("Everything you watch is kept here, so rewinding to any part you've already seen plays from the device instead of downloading again. It never grows beyond the free space."),
+        color = Color.White.copy(alpha = 0.5f), fontSize = 11.5.sp,
+        modifier = Modifier.padding(horizontal = 4.dp)
+    )
+    if (showDialog) {
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDialog = false },
+            containerColor = Color(0xFF161A26),
+            title = { Text(bt("Playback cache size"), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        bt("Available for the cache") + ": " + sizeText(maxBytes, -1),
+                        color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp
+                    )
+                    com.arflix.tv.player.cache.PlaybackCache.CHOICES_GB.forEach { gb ->
+                        val fits = maxBytes <= 0 || (gb.toLong() shl 30) <= maxBytes
+                        val selected = gb == limitGb
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = if (selected) 0.16f else 0.06f))
+                                .clickable(enabled = fits) {
+                                    limitGb = gb
+                                    showDialog = false
+                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        cache.setLimitGb(context, gb)
+                                        usedBytes = cache.usedBytes()
+                                    }
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Text(
+                                "$gb GB" + if (!fits) "  (" + bt("not enough free space") + ")" else "",
+                                color = Color.White.copy(alpha = if (fits) 1f else 0.35f),
+                                fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .clickable {
+                                showDialog = false
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    cache.clear(context)
+                                    usedBytes = cache.usedBytes()
+                                }
+                                android.widget.Toast.makeText(context, bt("Playback cache cleared"), android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Text(bt("Clear playback cache"), color = Color(0xFFFF8A80), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showDialog = false }) {
+                    Text(bt("Cancel"), color = Color.White.copy(alpha = 0.7f))
+                }
+            }
+        )
+    }
 }

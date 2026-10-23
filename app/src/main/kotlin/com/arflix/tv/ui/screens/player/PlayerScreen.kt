@@ -1056,7 +1056,7 @@ fun PlayerScreen(
             .setUserAgent(OkHttpProvider.userAgent)
             .setDefaultRequestProperties(baseRequestHeaders)
     }
-    val mediaCache = remember(context) { PlaybackCacheSingleton.getInstance(context) }
+    val mediaCache = remember(context) { com.arflix.tv.player.cache.PlaybackCache.get(context) }
     // Wrap the OkHttp factory so file:// URIs also work — matched subtitles are served from a
     // local cache file (already downloaded by the scan) instead of re-fetching addon servers.
     // http/https still routes through the same OkHttp client as before.
@@ -1173,6 +1173,13 @@ fun PlayerScreen(
         viewModel.bufferedReferenceCuesProvider = { max ->
             aiRenderersFactory.extractBufferedReferenceCues(max)
         }
+        viewModel.embeddedTextReferenceProvider = {
+            embeddedSubtitleStore.tracks().filter { !it.isForced && !it.isBitmap }.map { track ->
+                embeddedSubtitleStore.cues(track.trackId).map {
+                    com.arflix.tv.ui.screens.player.subtitles.SubtitleSyncMatcher.TimedCue(it.startMs, it.endMs, it.text)
+                }
+            }
+        }
         viewModel.embeddedTimingReferenceProvider = {
             embeddedSubtitleStore.tracks().filter { !it.isForced }.map { track ->
                 embeddedSubtitleStore.cues(track.trackId).map {
@@ -1196,6 +1203,7 @@ fun PlayerScreen(
             viewModel.bufferedCueTextsProvider = null
             viewModel.bufferedReferenceCuesProvider = null
             viewModel.embeddedTimingReferenceProvider = null
+            viewModel.embeddedTextReferenceProvider = null
             viewModel.selectedTextTrackProvider = null
             viewModel.geminiLiveService.disconnect()
         }
@@ -6844,7 +6852,7 @@ private fun buildPlaybackBufferProfile(
     // ARVIO Bilingual: keep what was just played in memory so a short rewind (the 10 s skip-back,
     // a swipe back) seeks inside the buffer instead of re-opening the stream. It counts against
     // targetBufferBytes, so on size-limited devices it trades forward buffer, never extra RAM;
-    // longer rewinds are served from the on-disk playback cache (PlaybackCacheSingleton).
+    // longer rewinds are served from the on-disk playback cache (player/cache/PlaybackCache, Settings → Downloads).
     val backBufferMs = when {
         isLowRamDevice || heapMb <= 256 -> 10_000
         heapMb <= 384 -> 15_000
@@ -7104,27 +7112,6 @@ private const val PLAYER_SCREEN_DIAGNOSTICS = true
 private fun playbackStartupDiag(message: String) {
     if (PLAYER_SCREEN_DIAGNOSTICS) {
         System.err.println("[PlaybackStartup] $message")
-    }
-}
-
-private object PlaybackCacheSingleton {
-    @Volatile
-    private var instance: SimpleCache? = null
-
-    fun getInstance(context: android.content.Context): SimpleCache {
-        return instance ?: synchronized(this) {
-            instance ?: run {
-                val cacheDir = java.io.File(context.applicationContext.cacheDir, "media3_playback_cache").apply { mkdirs() }
-                // ARVIO Bilingual: was 256 MB — barely a minute of a 1080p remux, so anything played
-                // earlier had to be re-downloaded on a rewind. Now ~10% of free space, 512 MB–3 GB.
-                val usable = runCatching { cacheDir.usableSpace }.getOrDefault(0L)
-                val cacheBytes = (usable / 10).coerceIn(512L * 1024L * 1024L, 3L * 1024L * 1024L * 1024L)
-                val evictor = LeastRecentlyUsedCacheEvictor(cacheBytes)
-                SimpleCache(cacheDir, evictor, StandaloneDatabaseProvider(context.applicationContext)).also {
-                    instance = it
-                }
-            }
-        }
     }
 }
 

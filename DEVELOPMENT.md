@@ -1,4 +1,4 @@
-# ARVIO Bilingual — Development notes
+# ARVIO Plus
 
 Base: upstream ARVIO `59c8af02f52bc26f2102224b338d28ccfca023de` (2026-10-12).
 

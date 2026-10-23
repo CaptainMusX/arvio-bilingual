@@ -16,7 +16,7 @@ import java.io.File
 object OfflineStorage {
     private const val PREFS = "arvio_offline_storage"
     private const val KEY_ROOT = "root_path"
-    const val PUBLIC_FOLDER_NAME = "ARVIO Bilingual"
+    const val PUBLIC_FOLDER_NAME = "ARVIO Plus"
 
     data class Location(val label: String, val path: String?, val detail: String)
 

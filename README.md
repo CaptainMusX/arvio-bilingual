@@ -1,6 +1,6 @@
-# ARVIO Bilingual
+# ARVIO Plus
 
-**ARVIO Bilingual** 是基于开源项目 [ARVIO](https://github.com/ProdigyV21/ARVIO)（Apache-2.0，作者 ProdigyV21 及贡献者）的个人定制版本，
+**ARVIO Plus** 是基于开源项目 [ARVIO](https://github.com/ProdigyV21/ARVIO)（Apache-2.0，作者 ProdigyV21 及贡献者）的个人定制版本，
 在保留 ARVIO 全部核心功能的前提下，增加了**智能双语字幕**：视频里已有两种语言的内嵌字幕时直接对齐合并（不调用 AI），只有一种时用 Gemini/Groq 翻译补全；两种语言可自由选择，并有完整的独立样式设置。
 
 > 本仓库不是 ARVIO 官方项目，也不隶属于 ARVIO。原项目说明见 [`docs/README.upstream.md`](docs/README.upstream.md)。
@@ -13,14 +13,14 @@
 
 ## 与官方 ARVIO 的区别
 
-| 项目 | 官方 ARVIO | ARVIO Bilingual |
+| 项目 | 官方 ARVIO | ARVIO Plus |
 |---|---|---|
 | 双语字幕 | AI 翻译用译文**替换**原文 | 智能双语：两条内嵌字幕直接合并（零 AI 调用）或 AI 补全缺失语言；主/辅语言可选，简繁区分 |
 | 双语样式 | — | 中英文各自的颜色（色板 + HEX）、字号、字体/字重、描边、阴影、背景框、显示/隐藏、独立上下偏移；上下顺序、双语间距、整体位置；实时预览 |
 | 包名 (applicationId) | `com.arvio.tv` | `com.arvio.tv.bilingual` —— 可与官方版**并存安装** |
-| 应用名 | ARVIO | ARVIO Bilingual |
-| 应用内自动更新 | 从官方 Releases 更新 | **已关闭**（避免下载官方 APK 覆盖/干扰），请手动安装新版 ARVIO Bilingual |
-| 构建 | 官方 CI + 官方密钥 | 本仓库 GitHub Actions（`ARVIO Bilingual APK` 工作流） |
+| 应用名 | ARVIO | ARVIO Plus |
+| 应用内自动更新 | 从官方 Releases 更新 | **已关闭**（避免下载官方 APK 覆盖/干扰），请手动安装新版 ARVIO Plus |
+| 构建 | 官方 CI + 官方密钥 | 本仓库 GitHub Actions（`ARVIO Plus APK` 工作流） |
 
 其余功能（海报墙、详情、Stremio Addons、插件/扩展、HTTP/HTTPS 播放、普通字幕、Find Best Match、Gemini/Groq 翻译与预翻译缓存等）沿用上游代码，未做改动。
 
@@ -106,7 +106,7 @@
 ## 如何启用 Gemini AI 翻译
 
 1. 打开 **Settings → AI Subtitles**（ARVIO 原有设置），选择模型（Gemini 或 Groq）并填入你的 API Key。
-   ARVIO Bilingual 是独立安装的应用，需要在其中重新填写一次 Key（官方版中的设置不会自动带过来）。
+   ARVIO Plus 是独立安装的应用，需要在其中重新填写一次 Key（官方版中的设置不会自动带过来）。
 2. 在 **Settings → Languages → Default Subtitle** 选择 **Chinese（简体中文）**——ARVIO 的 AI 翻译目标语言就是首选字幕语言。
 3. 播放带有**英文内嵌文本字幕**的视频，打开播放器 **Subtitles** 面板，打开 **AI Translation (Chinese)**。
    （也可以开启 ARVIO 原有的 *Auto-Select AI Translation*，没有中文字幕时自动启用。）
@@ -137,7 +137,7 @@
 1. 打开本仓库的 **Releases**（或 Actions 运行记录中的 Artifact），下载 `ARVIO-Bilingual-…-signed.apk`。
    Artifact 下载后是一个 zip，解压得到 APK。
 2. 在手机上允许“安装未知来源应用”，安装 APK。它的包名是 `com.arvio.tv.bilingual`，会和官方 ARVIO 并存，不会覆盖官方版。
-3. 在 ARVIO Bilingual 中重新登录/添加插件和 Addons（两个应用的数据互相独立）。
+3. 在 ARVIO Plus 中重新登录/添加插件和 Addons（两个应用的数据互相独立）。
 
 **签名说明**：当前构建使用为本仓库生成的**测试用途签名密钥**（`*-stable-signed.apk`），只保存在仓库 Actions Secrets 中，
 后续通过同一工作流构建的新版可以直接覆盖升级。若仓库 Secrets 中的密钥丢失或被更换，新 APK 将无法覆盖安装，需要先卸载旧版
@@ -147,7 +147,7 @@
 
 ## 通过 GitHub Actions 重新编译
 
-1. 仓库 → **Actions** → **ARVIO Bilingual APK** → **Run workflow**（可勾选 *create_release* 同时发布 Release）。
+1. 仓库 → **Actions** → **ARVIO Plus APK** → **Run workflow**（可勾选 *create_release* 同时发布 Release）。
 2. 完成后在运行页面底部 **Artifacts** 下载 APK；推送形如 `v2.2-bilingual.2` 的 tag 也会自动构建并发布 Release。
 
 可选的仓库 Secrets（Settings → Secrets and variables → Actions）：

@@ -18,6 +18,16 @@ object BilingualStrings {
     }
 
     private val T: Map<String, Pair<String, String>> = mapOf(
+        "PLAYBACK CACHE" to Pair("播放缓存", "播放快取"),
+        "Playback cache size" to Pair("播放缓存大小", "播放快取大小"),
+        "Used" to Pair("已用", "已用"),
+        "limited by free space to" to Pair("受可用空间限制为", "受可用空間限制為"),
+        "Everything you watch is kept here, so rewinding to any part you've already seen plays from the device instead of downloading again. It never grows beyond the free space." to Pair("看过的内容都会保存在这里，快退到任何已看过的位置都直接从本机读取，无需重新下载。缓存不会超过可用空间。", "看過的內容都會儲存在這裡，快退到任何已看過的位置都直接從本機讀取，無需重新下載。快取不會超過可用空間。"),
+        "Available for the cache" to Pair("缓存可用空间", "快取可用空間"),
+        "not enough free space" to Pair("可用空间不足", "可用空間不足"),
+        "Playback cache cleared" to Pair("播放缓存已清除", "播放快取已清除"),
+        "Clear playback cache" to Pair("清除播放缓存", "清除播放快取"),
+        "Subtitle aligned to the video's own track by AI line matching: {0}" to Pair("已通过 AI 逐句比对按内嵌字幕校准：{0}", "已透過 AI 逐句比對按內嵌字幕校準：{0}"),
         "Pick an online subtitle first" to Pair("请先选择一条在线字幕", "請先選擇一條線上字幕"),
         "This video has no embedded text subtitle to align to" to Pair("此视频没有可用于校准的内嵌文字字幕", "此影片沒有可用於校準的內嵌文字字幕"),
         "Aligning to the embedded subtitle…" to Pair("正在按内嵌字幕校准…", "正在按內嵌字幕校準…"),

@@ -7,7 +7,7 @@
     <string name="live_sports_external_source">Opens in browser</string>
     <string name="library_sort_release_newest">Release date: newest first</string>
     <string name="library_sort_release_oldest">Release date: oldest first</string>
-    <string name="app_name">ARVIO Bilingual</string>
+    <string name="app_name">ARVIO Plus</string>
     <string name="about_credits">About &amp; Credits</string>
     <string name="about_credits_description">Metadata attribution and copyright information</string>
     <string name="tmdb_attribution" translatable="false">This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
